@@ -1,9 +1,9 @@
-node_modules
-dist
-.next
-.turbo
+node_modules/
+dist/
+.next/
 .env
 .env.local
-*.tsbuildinfo
-.DS_Store
-coverage
+.env.*.local
+*.log
+.turbo
+.vercel
