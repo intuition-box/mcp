@@ -1,103 +1,236 @@
-import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import Link from "next/link";
+import type { Metadata } from "next";
+import { getMcpRegistry } from "@/lib/mcp-registry";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+
+// ---------------------------------------------------------------------------
+// Metadata
+// ---------------------------------------------------------------------------
+
+export const metadata: Metadata = {
+  title: "Documentation | Intuition MCP",
+  description:
+    "Complete guide to the Intuition MCP monorepo — installation, Claude Desktop integration, and tool reference for both the Intuition MCP and Trust Score MCP servers.",
+};
+
+// ---------------------------------------------------------------------------
+// Reusable presentational helpers
+// ---------------------------------------------------------------------------
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-2xl font-bold text-gray-900">{children}</h2>;
+}
+
+function CodeBlock({ children }: { children: string }) {
+  return (
+    <pre className="overflow-x-auto rounded-lg bg-slate-900 p-4 text-sm leading-relaxed text-slate-100">
+      {children}
+    </pre>
+  );
+}
+
+function InlineCode({ children }: { children: React.ReactNode }) {
+  return (
+    <code className="rounded bg-slate-100 px-1.5 py-0.5 text-sm text-slate-800">
+      {children}
+    </code>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 export default function DocsPage() {
+  const mcps = getMcpRegistry();
+  const totalTools = mcps.reduce((sum, m) => sum + m.tools.length, 0);
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      {/* Navigation */}
-      <nav className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/">
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent cursor-pointer">
-              Intuition MCP
-            </h1>
-          </Link>
-          <div className="flex gap-4">
-            <Link href="/">
-              <Button variant="ghost">Home</Button>
-            </Link>
-            <Link href="/dashboard">
-              <Button variant="ghost">Dashboard</Button>
-            </Link>
-          </div>
-        </div>
-      </nav>
-
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <div className="mb-8">
-          <h2 className="text-4xl font-bold mb-2">Documentation</h2>
-          <p className="text-slate-600">Complete guide to the Intuition MCP Server</p>
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+      <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
+        {/* Page header */}
+        <div className="mb-12">
+          <h1 className="text-4xl font-bold tracking-tight text-gray-900">
+            Documentation
+          </h1>
+          <p className="mt-2 text-lg text-gray-600">
+            Complete guide to the Intuition MCP monorepo
+          </p>
         </div>
 
-        <div className="space-y-8">
-          {/* Introduction */}
-          <section>
-            <h3 className="text-2xl font-bold mb-4">Introduction</h3>
-            <p className="text-slate-700 leading-relaxed mb-4">
-              The Intuition MCP Server provides a Model Context Protocol interface for querying trust scores,
-              attestations, and verifying credentials on the Intuition network. It enables AI assistants like
-              Claude to access on-chain reputation and attestation data.
+        <div className="space-y-14">
+          {/* ----------------------------------------------------------------
+              Introduction
+          ---------------------------------------------------------------- */}
+          <section className="space-y-4">
+            <SectionHeading>Introduction</SectionHeading>
+            <p className="leading-relaxed text-gray-700">
+              The Intuition MCP monorepo ships{" "}
+              <strong>{mcps.length} MCP servers</strong> exposing{" "}
+              <strong>{totalTools} tools</strong> that let AI assistants like
+              Claude query the Intuition knowledge graph, compute trust scores,
+              and verify on-chain reputation data.
             </p>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              {mcps.map((mcp) => (
+                <Card key={mcp.id} className="bg-white">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">{mcp.name}</CardTitle>
+                    <CardDescription className="text-xs">
+                      {mcp.tools.length} tools &middot;{" "}
+                      <Link
+                        href={`/playground/${encodeURIComponent(mcp.slug)}`}
+                        className="text-indigo-600 hover:underline"
+                      >
+                        View playground
+                      </Link>
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="pt-0 text-sm text-gray-600">
+                    {mcp.description}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </section>
 
-          {/* Installation */}
-          <section>
-            <h3 className="text-2xl font-bold mb-4">Installation</h3>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="space-y-4">
-                  <div>
-                    <h4 className="font-semibold mb-2">1. Clone and Install</h4>
-                    <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-sm overflow-x-auto">
-{`git clone https://github.com/yourusername/intuition-mcp-server
-cd intuition-mcp-server
-npm install`}
-                    </pre>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold mb-2">2. Configure Environment</h4>
-                    <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-sm overflow-x-auto">
-{`# .env.local
+          {/* ----------------------------------------------------------------
+              Installation
+          ---------------------------------------------------------------- */}
+          <section className="space-y-4">
+            <SectionHeading>Installation</SectionHeading>
+            <Card className="bg-white">
+              <CardContent className="space-y-6 pt-6">
+                <div>
+                  <h3 className="mb-2 font-semibold text-gray-900">
+                    1. Clone the monorepo
+                  </h3>
+                  <CodeBlock>
+{`git clone https://github.com/intuition-box/mcp.git
+cd mcp`}
+                  </CodeBlock>
+                </div>
+
+                <div>
+                  <h3 className="mb-2 font-semibold text-gray-900">
+                    2. Install dependencies
+                  </h3>
+                  <p className="mb-2 text-sm text-gray-600">
+                    Run <InlineCode>npm install</InlineCode> at the repository
+                    root. Workspaces are configured so every package gets its
+                    dependencies resolved in one pass.
+                  </p>
+                  <CodeBlock>npm install</CodeBlock>
+                </div>
+
+                <div>
+                  <h3 className="mb-2 font-semibold text-gray-900">
+                    3. Configure environment
+                  </h3>
+                  <CodeBlock>
+{`# apps/playground/.env.local
 NEXT_PUBLIC_INTUITION_GRAPH_URL=https://graph.intuition.systems/graphql`}
-                    </pre>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold mb-2">3. Run Development Server</h4>
-                    <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-sm overflow-x-auto">
-npm run dev
-                    </pre>
-                  </div>
+                  </CodeBlock>
+                </div>
+
+                <div>
+                  <h3 className="mb-2 font-semibold text-gray-900">
+                    4. Start the playground
+                  </h3>
+                  <CodeBlock>
+{`cd apps/playground
+npm run dev`}
+                  </CodeBlock>
+                  <p className="mt-2 text-sm text-gray-600">
+                    The playground runs at{" "}
+                    <InlineCode>http://localhost:3000</InlineCode> and gives you
+                    an interactive UI to explore both MCP servers.
+                  </p>
                 </div>
               </CardContent>
             </Card>
           </section>
 
-          {/* Claude Desktop Setup */}
-          <section>
-            <h3 className="text-2xl font-bold mb-4">Claude Desktop Integration</h3>
-            <Card>
+          {/* ----------------------------------------------------------------
+              Monorepo Structure
+          ---------------------------------------------------------------- */}
+          <section className="space-y-4">
+            <SectionHeading>Monorepo Structure</SectionHeading>
+            <Card className="bg-white">
+              <CardContent className="pt-6">
+                <CodeBlock>
+{`mcp/
+├── packages/
+│   ├── mcp-general/       # Intuition MCP server (knowledge graph)
+│   └── mcp-trust/         # Trust Score MCP server (EigenTrust, AgentRank)
+├── apps/
+│   └── playground/        # Next.js interactive playground & docs
+├── package.json           # Workspace root
+└── README.md`}
+                </CodeBlock>
+              </CardContent>
+            </Card>
+          </section>
+
+          {/* ----------------------------------------------------------------
+              Claude Desktop Integration
+          ---------------------------------------------------------------- */}
+          <section className="space-y-4">
+            <SectionHeading>Claude Desktop Integration</SectionHeading>
+            <Card className="bg-white">
               <CardHeader>
-                <CardTitle>Configure MCP Server</CardTitle>
+                <CardTitle className="text-lg">
+                  Configure both MCP servers
+                </CardTitle>
                 <CardDescription>
-                  Add the following configuration to your Claude Desktop config file
+                  Add the following to your Claude Desktop config file to
+                  register both servers.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <p className="text-sm mb-2 text-slate-600">
-                  <strong>Config file location:</strong>
-                </p>
-                <ul className="text-sm mb-4 space-y-1 text-slate-600">
-                  <li>• macOS: <code className="bg-slate-100 px-1 rounded">~/Library/Application Support/Claude/claude_desktop_config.json</code></li>
-                  <li>• Windows: <code className="bg-slate-100 px-1 rounded">%APPDATA%\Claude\claude_desktop_config.json</code></li>
-                </ul>
-                <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-sm overflow-x-auto">
+              <CardContent className="space-y-4">
+                <div>
+                  <h4 className="mb-1 text-sm font-semibold text-gray-900">
+                    Config file location
+                  </h4>
+                  <ul className="space-y-1 text-sm text-gray-600">
+                    <li>
+                      macOS:{" "}
+                      <InlineCode>
+                        ~/Library/Application Support/Claude/claude_desktop_config.json
+                      </InlineCode>
+                    </li>
+                    <li>
+                      Windows:{" "}
+                      <InlineCode>
+                        %APPDATA%\Claude\claude_desktop_config.json
+                      </InlineCode>
+                    </li>
+                  </ul>
+                </div>
+
+                <CodeBlock>
 {`{
   "mcpServers": {
     "intuition": {
       "command": "node",
       "args": [
-        "C:/absolute/path/to/intuition-mcp-server/lib/mcp/server.js"
+        "/absolute/path/to/mcp/packages/mcp-general/dist/index.js"
+      ],
+      "env": {
+        "NEXT_PUBLIC_INTUITION_GRAPH_URL": "https://graph.intuition.systems/graphql"
+      }
+    },
+    "trust-score": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/mcp/packages/mcp-trust/dist/index.js"
       ],
       "env": {
         "NEXT_PUBLIC_INTUITION_GRAPH_URL": "https://graph.intuition.systems/graphql"
@@ -105,226 +238,97 @@ npm run dev
     }
   }
 }`}
-                </pre>
-                <p className="text-sm mt-4 text-slate-600">
-                  After updating the config, restart Claude Desktop for changes to take effect.
+                </CodeBlock>
+
+                <p className="text-sm text-gray-600">
+                  Replace <InlineCode>/absolute/path/to/mcp</InlineCode> with
+                  the actual path where you cloned the repository. Restart
+                  Claude Desktop after saving changes.
                 </p>
               </CardContent>
             </Card>
           </section>
 
-          {/* MCP Tools */}
-          <section>
-            <h3 className="text-2xl font-bold mb-4">MCP Tools Reference</h3>
+          {/* ----------------------------------------------------------------
+              Tools Reference — generated from the registry
+          ---------------------------------------------------------------- */}
+          <section className="space-y-6">
+            <SectionHeading>Tools Reference</SectionHeading>
 
-            <div className="space-y-4">
-              {/* getTrustScore */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-blue-600">getTrustScore</CardTitle>
-                  <CardDescription>
-                    Get comprehensive trust score for an Ethereum address
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <h5 className="font-semibold mb-2">Parameters</h5>
-                    <ul className="text-sm space-y-1">
-                      <li>• <code className="bg-slate-100 px-1 rounded">address</code> (string, required): Ethereum address (0x...)</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <h5 className="font-semibold mb-2">Returns</h5>
-                    <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-xs overflow-x-auto">
-{`{
-  "address": "0x...",
-  "score": 85.5,
-  "attestationCount": 42,
-  "positiveAttestations": 38,
-  "negativeAttestations": 4,
-  "lastUpdated": 1234567890,
-  "breakdown": {
-    "credibility": 88.2,
-    "expertise": 90.1,
-    "reliability": 82.5,
-    "reputation": 85.5
-  }
-}`}
-                    </pre>
-                  </div>
-                  <div>
-                    <h5 className="font-semibold mb-2">Example Usage</h5>
-                    <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-sm overflow-x-auto">
-{`// In Claude conversation:
-"What is the trust score for address 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb?"`}
-                    </pre>
-                  </div>
-                </CardContent>
-              </Card>
+            {mcps.map((mcp) => (
+              <div key={mcp.id} className="space-y-4">
+                <h3 className="flex items-center gap-2 text-xl font-semibold text-gray-900">
+                  {mcp.name}
+                  <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-600/20">
+                    {mcp.tools.length} tools
+                  </span>
+                </h3>
 
-              {/* getAttestations */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-purple-600">getAttestations</CardTitle>
-                  <CardDescription>
-                    Query attestations with flexible filters
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <h5 className="font-semibold mb-2">Parameters</h5>
-                    <ul className="text-sm space-y-1">
-                      <li>• <code className="bg-slate-100 px-1 rounded">creator</code> (string, optional): Filter by creator address</li>
-                      <li>• <code className="bg-slate-100 px-1 rounded">subject</code> (string, optional): Filter by subject address</li>
-                      <li>• <code className="bg-slate-100 px-1 rounded">predicate</code> (string, optional): Filter by predicate/claim type</li>
-                      <li>• <code className="bg-slate-100 px-1 rounded">object</code> (string, optional): Filter by object value</li>
-                      <li>• <code className="bg-slate-100 px-1 rounded">minConfidence</code> (number, optional): Minimum confidence (0-1)</li>
-                      <li>• <code className="bg-slate-100 px-1 rounded">limit</code> (number, optional): Max results (default: 100, max: 1000)</li>
-                      <li>• <code className="bg-slate-100 px-1 rounded">offset</code> (number, optional): Pagination offset</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <h5 className="font-semibold mb-2">Returns</h5>
-                    <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-xs overflow-x-auto">
-{`[
-  {
-    "id": "triple-123",
-    "creator": "0x...",
-    "subject": "0x...",
-    "predicate": "expert-in-solidity",
-    "object": "true",
-    "timestamp": 1234567890,
-    "confidence": 0.95,
-    "stake": "vault-456"
-  }
-]`}
-                    </pre>
-                  </div>
-                  <div>
-                    <h5 className="font-semibold mb-2">Example Usage</h5>
-                    <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-sm overflow-x-auto">
-{`// In Claude conversation:
-"Show me all attestations for address 0x... with predicate 'expert-in-defi'"`}
-                    </pre>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* verifyCredential */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-pink-600">verifyCredential</CardTitle>
-                  <CardDescription>
-                    Verify if an address has a specific credential or claim
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <h5 className="font-semibold mb-2">Parameters</h5>
-                    <ul className="text-sm space-y-1">
-                      <li>• <code className="bg-slate-100 px-1 rounded">address</code> (string, required): Ethereum address to verify</li>
-                      <li>• <code className="bg-slate-100 px-1 rounded">claim</code> (string, required): Credential/claim to verify</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <h5 className="font-semibold mb-2">Returns</h5>
-                    <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-xs overflow-x-auto">
-{`{
-  "verified": true,
-  "attestations": [...],
-  "confidence": 0.92,
-  "message": "Address 0x... has 5 attestation(s) for 'expert-in-defi' with 92.0% confidence"
-}`}
-                    </pre>
-                  </div>
-                  <div>
-                    <h5 className="font-semibold mb-2">Example Usage</h5>
-                    <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-sm overflow-x-auto">
-{`// In Claude conversation:
-"Is address 0x... verified as 'trusted-developer'?"`}
-                    </pre>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* findTrustedExperts */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-orange-600">findTrustedExperts</CardTitle>
-                  <CardDescription>
-                    Find and rank experts in a specific topic or domain
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <h5 className="font-semibold mb-2">Parameters</h5>
-                    <ul className="text-sm space-y-1">
-                      <li>• <code className="bg-slate-100 px-1 rounded">topic</code> (string, required): Topic or domain to search</li>
-                      <li>• <code className="bg-slate-100 px-1 rounded">limit</code> (number, optional): Max experts (default: 10, max: 100)</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <h5 className="font-semibold mb-2">Returns</h5>
-                    <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-xs overflow-x-auto">
-{`[
-  {
-    "address": "0x...",
-    "trustScore": 92.5,
-    "attestationCount": 47,
-    "specializations": ["solidity"],
-    "recentActivity": 1234567890
-  }
-]`}
-                    </pre>
-                  </div>
-                  <div>
-                    <h5 className="font-semibold mb-2">Example Usage</h5>
-                    <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-sm overflow-x-auto">
-{`// In Claude conversation:
-"Who are the top 5 experts in 'smart-contract-security'?"`}
-                    </pre>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                <div className="grid gap-3">
+                  {mcp.tools.map((tool) => (
+                    <Card key={tool.name} className="bg-white">
+                      <CardHeader className="pb-0">
+                        <CardTitle className="text-base">
+                          <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-sm text-indigo-700">
+                            {tool.name}
+                          </code>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="pt-2 text-sm text-gray-600">
+                        {tool.description}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            ))}
           </section>
 
-          {/* API Endpoints */}
-          <section>
-            <h3 className="text-2xl font-bold mb-4">HTTP API Endpoints</h3>
-            <p className="text-slate-700 mb-4">
-              You can also access the MCP tools via HTTP endpoints when running the Next.js development server.
+          {/* ----------------------------------------------------------------
+              HTTP API Endpoints
+          ---------------------------------------------------------------- */}
+          <section className="space-y-4">
+            <SectionHeading>HTTP API Endpoints</SectionHeading>
+            <p className="text-gray-700">
+              When the playground dev server is running you can also call the
+              tools via HTTP.
             </p>
 
             <div className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">GET /api/trust-score</CardTitle>
+              <Card className="bg-white">
+                <CardHeader className="pb-0">
+                  <CardTitle className="text-base">
+                    GET /api/trust-score
+                  </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-sm">
+                <CardContent className="pt-3">
+                  <CodeBlock>
 {`curl "http://localhost:3000/api/trust-score?address=0x..."`}
-                  </pre>
+                  </CodeBlock>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">GET /api/attestations</CardTitle>
+              <Card className="bg-white">
+                <CardHeader className="pb-0">
+                  <CardTitle className="text-base">
+                    GET /api/attestations
+                  </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-sm">
+                <CardContent className="pt-3">
+                  <CodeBlock>
 {`curl "http://localhost:3000/api/attestations?subject=0x...&limit=50"`}
-                  </pre>
+                  </CodeBlock>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">POST /api/mcp</CardTitle>
+              <Card className="bg-white">
+                <CardHeader className="pb-0">
+                  <CardTitle className="text-base">
+                    POST /api/mcp
+                  </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-sm">
+                <CardContent className="pt-3">
+                  <CodeBlock>
 {`curl -X POST http://localhost:3000/api/mcp \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -334,112 +338,96 @@ npm run dev
       "claim": "expert-in-defi"
     }
   }'`}
-                  </pre>
+                  </CodeBlock>
                 </CardContent>
               </Card>
             </div>
           </section>
 
-          {/* TypeScript Types */}
-          <section>
-            <h3 className="text-2xl font-bold mb-4">TypeScript Types</h3>
-            <Card>
-              <CardContent className="pt-6">
-                <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-xs overflow-x-auto">
-{`interface TrustScore {
-  address: string;
-  score: number;
-  attestationCount: number;
-  positiveAttestations: number;
-  negativeAttestations: number;
-  lastUpdated: number;
-  breakdown: {
-    credibility: number;
-    expertise: number;
-    reliability: number;
-    reputation: number;
-  };
-}
-
-interface Attestation {
-  id: string;
-  creator: string;
-  subject: string;
-  predicate: string;
-  object: string;
-  timestamp: number;
-  confidence: number;
-  stake?: string;
-  metadata?: Record<string, any>;
-}
-
-interface VerificationResult {
-  verified: boolean;
-  attestations: Attestation[];
-  confidence: number;
-  message: string;
-}
-
-interface Expert {
-  address: string;
-  trustScore: number;
-  attestationCount: number;
-  specializations: string[];
-  recentActivity: number;
-}`}
-                </pre>
-              </CardContent>
-            </Card>
-          </section>
-
-          {/* Resources */}
-          <section>
-            <h3 className="text-2xl font-bold mb-4">Resources</h3>
-            <div className="grid md:grid-cols-2 gap-4">
-              <Card>
+          {/* ----------------------------------------------------------------
+              Resources
+          ---------------------------------------------------------------- */}
+          <section className="space-y-4">
+            <SectionHeading>Resources</SectionHeading>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Card className="bg-white">
                 <CardHeader>
-                  <CardTitle className="text-lg">Intuition Systems</CardTitle>
-                  <CardDescription>Learn about the Intuition protocol</CardDescription>
+                  <CardTitle className="text-base">
+                    Intuition Systems
+                  </CardTitle>
+                  <CardDescription>
+                    Learn about the Intuition protocol
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Link href="https://intuition.systems" target="_blank" className="text-blue-600 hover:underline">
-                    intuition.systems →
+                  <Link
+                    href="https://intuition.systems"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-indigo-600 hover:underline"
+                  >
+                    intuition.systems &rarr;
                   </Link>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="bg-white">
                 <CardHeader>
-                  <CardTitle className="text-lg">Model Context Protocol</CardTitle>
-                  <CardDescription>Official MCP documentation</CardDescription>
+                  <CardTitle className="text-base">
+                    Model Context Protocol
+                  </CardTitle>
+                  <CardDescription>
+                    Official MCP specification
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Link href="https://modelcontextprotocol.io" target="_blank" className="text-blue-600 hover:underline">
-                    modelcontextprotocol.io →
+                  <Link
+                    href="https://modelcontextprotocol.io"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-indigo-600 hover:underline"
+                  >
+                    modelcontextprotocol.io &rarr;
                   </Link>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="bg-white">
                 <CardHeader>
-                  <CardTitle className="text-lg">Try Dashboard</CardTitle>
-                  <CardDescription>Test the API in your browser</CardDescription>
+                  <CardTitle className="text-base">
+                    GitHub Repository
+                  </CardTitle>
+                  <CardDescription>
+                    View source code &amp; contribute
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Link href="/dashboard" className="text-blue-600 hover:underline">
-                    Go to Dashboard →
+                  <Link
+                    href="https://github.com/intuition-box/mcp"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-indigo-600 hover:underline"
+                  >
+                    github.com/intuition-box/mcp &rarr;
                   </Link>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="bg-white">
                 <CardHeader>
-                  <CardTitle className="text-lg">GitHub Repository</CardTitle>
-                  <CardDescription>View source code</CardDescription>
+                  <CardTitle className="text-base">
+                    MCP Directory
+                  </CardTitle>
+                  <CardDescription>
+                    Explore &amp; try all available servers
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Link href="https://github.com" target="_blank" className="text-blue-600 hover:underline">
-                    GitHub →
+                  <Link
+                    href="/"
+                    className="text-sm text-indigo-600 hover:underline"
+                  >
+                    Browse MCP Directory &rarr;
                   </Link>
                 </CardContent>
               </Card>

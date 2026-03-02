@@ -76,8 +76,9 @@ export default function RootLayout({
                   Docs
                 </Link>
                 <Link
-                  href="https://github.com/rudazy/Intuition-"
+                  href="https://github.com/intuition-box/mcp"
                   target="_blank"
+                  rel="noopener noreferrer"
                   className="text-gray-700 hover:text-indigo-600 font-medium transition-colors"
                 >
                   GitHub

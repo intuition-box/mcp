@@ -1,31 +1,143 @@
 # Intuition MCP Monorepo
 
-Monorepo for Intuition MCP tools and applications.
+Model Context Protocol servers for the [Intuition](https://intuition.systems) knowledge graph and trust network. Ships two MCP servers and an interactive playground for exploring them.
 
-## Structure
+**Playground:** [mcp.intuition.box](https://mcp.intuition.box)
+
+## Monorepo Structure
 
 ```
-apps/
-  playground/       - Next.js app deployed at intuitionmcp.xyz
-packages/
-  mcp-general/      - Official Intuition MCP server (@intuition-box/mcp-general)
-  mcp-trust/        - Trust scoring engine (@intuition-box/mcp-trust)
+├── packages/
+│   ├── mcp-general/       # @intuition-box/mcp-general — Intuition knowledge graph MCP
+│   │                        8 tools: accounts, followers, relations, atoms, lists
+│   └── mcp-trust/         # @intuition-box/mcp-trust — Trust scoring MCP
+│                            7 tools: EigenTrust, AgentRank, sybil detection, composite scores
+├── apps/
+│   └── playground/        # Next.js app — MCP directory, per-server playgrounds, docs
+└── package.json           # npm workspaces root
 ```
 
-## Setup
+## Getting Started
+
+### Prerequisites
+
+- Node.js >= 18
+- npm >= 9 (ships with Node 18+)
+
+### Installation
 
 ```bash
+git clone https://github.com/intuition-box/mcp.git
+cd mcp
 npm install
 ```
 
-## Development
+All workspace dependencies are resolved in a single `npm install` at the root.
+
+### Running the Playground
 
 ```bash
+cd apps/playground
 npm run dev
 ```
 
-## Build
+Opens at [http://localhost:3000](http://localhost:3000) — browse the MCP directory, explore tool playgrounds, and read the docs.
+
+### Running Individual Packages
 
 ```bash
-npm run build
+# Intuition MCP server (watch mode)
+cd packages/mcp-general
+npm run dev
+
+# Trust Score MCP server
+cd packages/mcp-trust
+npm run dev
 ```
+
+### Building
+
+```bash
+# Build all workspaces
+npm run build
+
+# Build a single package
+cd packages/mcp-general && npm run build
+cd packages/mcp-trust && npm run build
+```
+
+### Testing
+
+```bash
+# Run all workspace tests
+npm test
+
+# Run tests for a specific package
+cd packages/mcp-trust && npm test
+```
+
+## Claude Desktop Integration
+
+Add both servers to your Claude Desktop config to give Claude access to the full Intuition toolkit.
+
+**Config file location:**
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "intuition": {
+      "command": "node",
+      "args": ["/absolute/path/to/mcp/packages/mcp-general/dist/index.js"],
+      "env": {
+        "NEXT_PUBLIC_INTUITION_GRAPH_URL": "https://graph.intuition.systems/graphql"
+      }
+    },
+    "trust-score": {
+      "command": "node",
+      "args": ["/absolute/path/to/mcp/packages/mcp-trust/dist/index.js"],
+      "env": {
+        "NEXT_PUBLIC_INTUITION_GRAPH_URL": "https://graph.intuition.systems/graphql"
+      }
+    }
+  }
+}
+```
+
+Replace `/absolute/path/to/mcp` with the path where you cloned the repo. Restart Claude Desktop after saving.
+
+## Packages
+
+### @intuition-box/mcp-general
+
+MCP server for the Intuition knowledge graph. Provides read access to accounts, relationships, atoms, and curated lists.
+
+| Tool | Description |
+|---|---|
+| `get-account-info` | Retrieve profile and metadata for an account |
+| `get-followers` | List accounts following a given account |
+| `get-following` | List accounts a given account follows |
+| `get-inbound-relations` | Inbound relation edges pointing to an account |
+| `get-outgoing-edges` | Outgoing relation edges from an account |
+| `search-account-ids` | Search account identifiers by query string |
+| `search-atoms` | Search atoms by label or content |
+| `search-lists` | Search curated lists |
+
+### @intuition-box/mcp-trust
+
+Trust computation engine over the Intuition attestation graph. Implements EigenTrust, AgentRank, sybil detection, and path-based trust.
+
+| Tool | Description |
+|---|---|
+| `eigentrust` | Compute EigenTrust scores for agents in the trust graph |
+| `agentrank` | Rank agents using AgentRank over attestation edges |
+| `composite-score` | Weighted composite trust score from multiple signals |
+| `sybil-simulation` | Sybil-resistance simulation for fake identity detection |
+| `transitive-trust` | Transitive trust between two agents across paths |
+| `network-stats` | Aggregate statistics about trust network topology |
+| `trust-path` | Strongest trust path between source and target agents |
+
+## License
+
+MIT

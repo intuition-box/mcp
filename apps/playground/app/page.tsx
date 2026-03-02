@@ -1,205 +1,242 @@
 import Link from "next/link";
+import { getMcpRegistry, type McpEntry } from "@/lib/mcp-registry";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+
+// ---------------------------------------------------------------------------
+// Status badge
+// ---------------------------------------------------------------------------
+
+const STATUS_STYLES: Record<McpEntry["status"], { label: string; className: string }> = {
+  official: {
+    label: "Official",
+    className:
+      "bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-600/20",
+  },
+  community: {
+    label: "Community",
+    className:
+      "bg-gray-50 text-gray-700 ring-1 ring-inset ring-gray-600/20",
+  },
+};
+
+function StatusBadge({ status }: { status: McpEntry["status"] }) {
+  const style = STATUS_STYLES[status];
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${style.className}`}
+    >
+      {style.label}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Inline SVG icons (avoids an external icon dependency)
+// ---------------------------------------------------------------------------
+
+function ToolIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M11.42 15.17 17.25 21A2.652 2.652 0 0 0 21 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 1 1-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 0 0 4.486-6.336l-3.276 3.277a3.004 3.004 0 0 1-2.25-2.25l3.276-3.276a4.5 4.5 0 0 0-6.336 4.486c.049.58.025 1.193-.14 1.743"
+      />
+    </svg>
+  );
+}
+
+function ArrowRightIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"
+      />
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MCP Card
+// ---------------------------------------------------------------------------
+
+function McpCard({ entry }: { entry: McpEntry }) {
+  const toolCount = entry.tools.length;
+
+  return (
+    <Card className="group relative flex flex-col bg-white transition-shadow hover:shadow-lg">
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <CardTitle className="text-xl">{entry.name}</CardTitle>
+          <StatusBadge status={entry.status} />
+        </div>
+        <CardDescription className="mt-2 line-clamp-3 text-sm leading-relaxed text-gray-600">
+          {entry.description}
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent className="flex-1">
+        <div className="flex items-center gap-2 text-sm text-gray-500">
+          <ToolIcon className="h-4 w-4 shrink-0" />
+          <span>
+            {toolCount} {toolCount === 1 ? "tool" : "tools"} available
+          </span>
+        </div>
+
+        <ul className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1.5">
+          {entry.tools.map((tool) => (
+            <li
+              key={tool.name}
+              className="truncate text-xs text-gray-500"
+              title={tool.description}
+            >
+              <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] text-gray-700">
+                {tool.name}
+              </code>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+
+      <CardFooter>
+        <Button asChild className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700">
+          <Link href={`/playground/${encodeURIComponent(entry.slug)}`}>
+            Try Playground
+            <ArrowRightIcon className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+          </Link>
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 export default function Home() {
+  const mcps = getMcpRegistry();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
-      {/* Hero Section */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16">
-        <div className="text-center">
-          <div className="inline-flex items-center px-4 py-2 bg-indigo-100 rounded-full mb-8">
-            <span className="text-indigo-600 font-semibold text-sm">
-              🚀 MCP Server for Intuition Mainnet
-            </span>
-          </div>
-          <h1 className="text-5xl md:text-6xl font-bold text-gray-900 mb-6">
-            Connect AI Agents to
-            <span className="block text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">
-              Intuition Trust Network
-            </span>
-          </h1>
-          <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
-            Enable Claude, ChatGPT, and autonomous agents to query trust scores, 
-            verify credentials, and discover experts using the Model Context Protocol.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
-              href="/dashboard"
-              className="px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg font-semibold hover:shadow-lg transform hover:-translate-y-0.5 transition-all"
-            >
-              Try Dashboard
-            </Link>
-            <Link
-              href="/docs"
-              className="px-8 py-4 bg-white text-indigo-600 border-2 border-indigo-600 rounded-lg font-semibold hover:bg-indigo-50 transition-all"
-            >
-              Read Docs
-            </Link>
-          </div>
+      {/* Hero */}
+      <section className="mx-auto max-w-7xl px-4 pb-4 pt-20 text-center sm:px-6 lg:px-8">
+        <div className="inline-flex items-center rounded-full bg-indigo-100 px-4 py-2">
+          <span className="text-sm font-semibold text-indigo-600">
+            Model Context Protocol
+          </span>
         </div>
-      </section>
 
-      {/* Features Grid */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <h2 className="text-3xl font-bold text-center mb-12">
-          Powerful MCP Tools for AI Agents
-        </h2>
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-          {/* Feature 1 */}
-          <div className="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-            <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold mb-2">Trust Scores</h3>
-            <p className="text-gray-600 text-sm">
-              Calculate aggregated trust scores for any Ethereum address based on attestation patterns.
-            </p>
-          </div>
+        <h1 className="mt-6 text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">
+          Intuition MCP Directory
+        </h1>
 
-          {/* Feature 2 */}
-          <div className="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold mb-2">Query Attestations</h3>
-            <p className="text-gray-600 text-sm">
-              Search and filter attestations with flexible parameters including subjects and predicates.
-            </p>
-          </div>
-
-          {/* Feature 3 */}
-          <div className="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-            <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-pink-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold mb-2">Verify Credentials</h3>
-            <p className="text-gray-600 text-sm">
-              Check if addresses have specific attestations with confidence scores.
-            </p>
-          </div>
-
-          {/* Feature 4 */}
-          <div className="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-            <div className="w-12 h-12 bg-cyan-100 rounded-lg flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold mb-2">Find Experts</h3>
-            <p className="text-gray-600 text-sm">
-              Discover highly trusted addresses in specific domains or topics.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Stats Section */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-12 text-white">
-          <div className="grid md:grid-cols-3 gap-8 text-center">
-            <div>
-              <div className="text-4xl font-bold mb-2">Mainnet</div>
-              <div className="text-indigo-200">Live Attestation Data</div>
-            </div>
-            <div>
-              <div className="text-4xl font-bold mb-2">4 Tools</div>
-              <div className="text-indigo-200">MCP Integration</div>
-            </div>
-            <div>
-              <div className="text-4xl font-bold mb-2">100% Open</div>
-              <div className="text-indigo-200">No API Key Required</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* How It Works */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <h2 className="text-3xl font-bold text-center mb-12">
-          How It Works
-        </h2>
-        <div className="grid md:grid-cols-3 gap-8">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-2xl font-bold text-indigo-600">1</span>
-            </div>
-            <h3 className="text-xl font-semibold mb-2">Configure MCP</h3>
-            <p className="text-gray-600">
-              Add the server to your Claude Desktop configuration file.
-            </p>
-          </div>
-          <div className="text-center">
-            <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-2xl font-bold text-purple-600">2</span>
-            </div>
-            <h3 className="text-xl font-semibold mb-2">Query Data</h3>
-            <p className="text-gray-600">
-              AI agents can now access Intuition's trust network directly.
-            </p>
-          </div>
-          <div className="text-center">
-            <div className="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-2xl font-bold text-pink-600">3</span>
-            </div>
-            <h3 className="text-xl font-semibold mb-2">Build Apps</h3>
-            <p className="text-gray-600">
-              Create trust-gated apps, credential verifiers, and more.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
-        <h2 className="text-3xl font-bold mb-4">
-          Ready to Get Started?
-        </h2>
-        <p className="text-xl text-gray-600 mb-8">
-          Explore the interactive dashboard or read the documentation to integrate with your AI agents.
+        <p className="mx-auto mt-4 max-w-2xl text-lg leading-relaxed text-gray-600">
+          Explore the available MCP servers in the Intuition ecosystem.
+          Connect AI agents to trust scores, knowledge graphs, and
+          reputation data.
         </p>
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Link
-            href="/dashboard"
-            className="px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg font-semibold hover:shadow-lg transform hover:-translate-y-0.5 transition-all"
-          >
-            Launch Dashboard
-          </Link>
-          <Link
-            href="https://github.com/rudazy/Intuition-"
-            target="_blank"
-            className="px-8 py-4 bg-gray-900 text-white rounded-lg font-semibold hover:bg-gray-800 transition-all"
-          >
-            View on GitHub
-          </Link>
+      </section>
+
+      {/* Directory grid */}
+      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+        <div className="grid gap-8 md:grid-cols-2">
+          {mcps.map((entry) => (
+            <McpCard key={entry.id} entry={entry} />
+          ))}
+        </div>
+      </section>
+
+      {/* Stats banner */}
+      <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
+        <div className="rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 p-12 text-white">
+          <div className="grid gap-8 text-center md:grid-cols-3">
+            <div>
+              <div className="text-4xl font-bold">
+                {mcps.length}
+              </div>
+              <div className="mt-1 text-indigo-200">MCP Servers</div>
+            </div>
+            <div>
+              <div className="text-4xl font-bold">
+                {mcps.reduce((sum, m) => sum + m.tools.length, 0)}
+              </div>
+              <div className="mt-1 text-indigo-200">Total Tools</div>
+            </div>
+            <div>
+              <div className="text-4xl font-bold">100% Open</div>
+              <div className="mt-1 text-indigo-200">No API Key Required</div>
+            </div>
+          </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t mt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="flex flex-col md:flex-row justify-between items-center">
-            <div className="text-gray-600 mb-4 md:mb-0">
-              © 2025 Intuition MCP Server. Open source AI agent integration.
+      <footer className="mt-16 border-t">
+        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+          <div className="flex flex-col items-center justify-between md:flex-row">
+            <div className="mb-4 text-gray-600 md:mb-0">
+              &copy; {new Date().getFullYear()} Intuition MCP Server. Open
+              source AI agent integration.
             </div>
             <div className="flex space-x-6">
-              <Link href="https://x.com/IntuitASystem" target="_blank" className="text-gray-600 hover:text-indigo-600 flex items-center gap-2">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+              <Link
+                href="https://x.com/IntuitASystem"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-gray-600 hover:text-indigo-600"
+              >
+                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                 </svg>
                 Twitter
               </Link>
-              <Link href="https://portal.intuition.systems/" target="_blank" className="text-gray-600 hover:text-indigo-600">
+              <Link
+                href="https://portal.intuition.systems/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-gray-600 hover:text-indigo-600"
+              >
                 Portal
               </Link>
-              <Link href="https://docs.intuition.systems/" target="_blank" className="text-gray-600 hover:text-indigo-600">
+              <Link
+                href="https://docs.intuition.systems/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-gray-600 hover:text-indigo-600"
+              >
                 Docs
               </Link>
-              <Link href="https://github.com/rudazy/Intuition-" target="_blank" className="text-gray-600 hover:text-indigo-600">
+              <Link
+                href="https://github.com/intuition-box/mcp"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-gray-600 hover:text-indigo-600"
+              >
                 GitHub
               </Link>
             </div>
