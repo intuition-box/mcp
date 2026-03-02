@@ -24,35 +24,27 @@ Model Context Protocol servers for the [Intuition](https://intuition.systems) kn
 - Node.js >= 18
 - npm >= 9 (ships with Node 18+)
 
-### Installation
+### Quick Start
 
 ```bash
 git clone https://github.com/intuition-box/mcp.git
 cd mcp
 npm install
-```
-
-All workspace dependencies are resolved in a single `npm install` at the root.
-
-### Running the Playground
-
-```bash
-cd apps/playground
 npm run dev
 ```
 
-Opens at [http://localhost:3000](http://localhost:3000) — browse the MCP directory, explore tool playgrounds, and read the docs.
+`npm run dev` starts the playground at [http://localhost:3000](http://localhost:3000).
+
+> **Note:** An `.npmrc` with `legacy-peer-deps=true` is checked in so `npm install` works without extra flags.
 
 ### Running Individual Packages
 
 ```bash
 # Intuition MCP server (watch mode)
-cd packages/mcp-general
-npm run dev
+npm run dev --workspace packages/mcp-general
 
 # Trust Score MCP server
-cd packages/mcp-trust
-npm run dev
+npm run dev --workspace packages/mcp-trust
 ```
 
 ### Building
@@ -62,8 +54,8 @@ npm run dev
 npm run build
 
 # Build a single package
-cd packages/mcp-general && npm run build
-cd packages/mcp-trust && npm run build
+npm run build --workspace packages/mcp-general
+npm run build --workspace packages/mcp-trust
 ```
 
 ### Testing
@@ -73,7 +65,7 @@ cd packages/mcp-trust && npm run build
 npm test
 
 # Run tests for a specific package
-cd packages/mcp-trust && npm test
+npm test --workspace packages/mcp-trust
 ```
 
 ## Claude Desktop Integration
