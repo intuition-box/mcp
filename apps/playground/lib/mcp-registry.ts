@@ -91,7 +91,7 @@ const registry: readonly McpEntry[] = Object.freeze([
       'AgentRank, sybil detection, and composite scoring over the Intuition ' +
       'attestation graph.',
     slug: 'trust-score',
-    status: 'official',
+    status: 'community',
     tools: Object.freeze<McpTool[]>([
       {
         name: 'eigentrust',
