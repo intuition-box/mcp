@@ -205,7 +205,7 @@ export default function Home() {
             </div>
             <div className="flex space-x-6">
               <Link
-                href="https://x.com/IntuitASystem"
+                href="https://x.com/0xIntuition"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 text-gray-600 hover:text-indigo-600"
