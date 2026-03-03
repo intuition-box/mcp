@@ -211,12 +211,20 @@ export default async function PlaygroundPage({ params }: PageProps) {
             </p>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2 rounded-lg border bg-white px-4 py-2.5 text-sm text-gray-500 shadow-sm">
-            <CommandLineIcon className="h-4 w-4 text-indigo-500" />
-            <span>
-              <span className="font-semibold text-gray-900">{toolCount}</span>{" "}
-              {toolCount === 1 ? "tool" : "tools"}
-            </span>
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <div className="flex items-center gap-2 rounded-lg border bg-white px-4 py-2.5 text-sm text-gray-500 shadow-sm">
+              <CommandLineIcon className="h-4 w-4 text-indigo-500" />
+              <span>
+                <span className="font-semibold text-gray-900">{toolCount}</span>{" "}
+                {toolCount === 1 ? "tool" : "tools"}
+              </span>
+            </div>
+            {entry.serverUrl && (
+              <div className="flex items-center gap-1.5 rounded-md bg-gray-50 px-3 py-1.5 text-xs text-gray-500 ring-1 ring-inset ring-gray-200">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-500" />
+                <span className="font-mono">{entry.serverUrl}</span>
+              </div>
+            )}
           </div>
         </div>
       </section>

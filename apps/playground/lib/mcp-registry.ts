@@ -80,7 +80,7 @@ const registry: readonly McpEntry[] = Object.freeze([
         description: 'Search curated lists within the Intuition network.',
       },
     ]),
-    serverUrl: '',
+    serverUrl: process.env.NEXT_PUBLIC_MCP_GENERAL_URL || 'http://localhost:3001',
   }),
 
   Object.freeze<McpEntry>({
@@ -123,7 +123,7 @@ const registry: readonly McpEntry[] = Object.freeze([
         description: 'Find the strongest trust path between a source and target agent.',
       },
     ]),
-    serverUrl: '',
+    serverUrl: process.env.NEXT_PUBLIC_MCP_TRUST_URL || 'http://localhost:3002',
   }),
 ]);
 

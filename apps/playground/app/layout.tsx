@@ -2,6 +2,12 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Link from "next/link";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -56,19 +62,33 @@ export default function RootLayout({
                   Intuition MCP
                 </span>
               </Link>
-              <div className="flex space-x-8">
+              <div className="flex items-center space-x-8">
                 <Link
                   href="/"
                   className="text-gray-700 hover:text-indigo-600 font-medium transition-colors"
                 >
                   Home
                 </Link>
-                <Link
-                  href="/dashboard"
-                  className="text-gray-700 hover:text-indigo-600 font-medium transition-colors"
-                >
-                  Dashboard
-                </Link>
+                <DropdownMenu>
+                  <DropdownMenuTrigger className="text-gray-700 hover:text-indigo-600 font-medium transition-colors flex items-center gap-1 outline-none">
+                    Playground
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuItem asChild>
+                      <Link href="/playground/official" className="w-full cursor-pointer">
+                        Official Intuition MCP
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/playground/trust-score" className="w-full cursor-pointer">
+                        Trust Score MCP
+                      </Link>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <Link
                   href="/docs"
                   className="text-gray-700 hover:text-indigo-600 font-medium transition-colors"
