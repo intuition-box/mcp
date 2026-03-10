@@ -7,8 +7,15 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
-    "dev": "npm run dev --workspace apps/playground",
+    "build": "npm run build:all",
+    "build:all": "npm run build:general && npm run build:trust && npm run build:playground",
+    "build:general": "npm run build --workspace=packages/mcp-general",
+    "build:trust": "npm run build --workspace=packages/mcp-trust",
+    "build:playground": "npm run build --workspace=apps/playground",
+    "dev": "npm run dev --workspace=apps/playground",
+    "dev:general": "npm run dev --workspace=packages/mcp-general",
+    "dev:trust": "npm run dev --workspace=packages/mcp-trust",
+    "dev:playground": "npm run dev --workspace=apps/playground",
     "test": "npm run test --workspaces --if-present"
   }
 }

@@ -15,9 +15,7 @@ import {
   PersonalizedTrustQuery,
 } from './types.js';
 import {
-  DEFAULT_DECAY_FACTOR,
   DEFAULT_MAX_HOPS,
-  DEFAULT_MIN_STAKE,
   DEFAULT_QUERY_CONFIG,
   getPredicateWeight,
 } from './constants.js';

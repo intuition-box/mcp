@@ -65,23 +65,48 @@ export interface TransformResult {
   edges: AttestationEdge[];
 }
 
+// ============ GraphQL Response Types ============
+
+export interface TriplesQueryResponse {
+  triples: IntuitionTriple[];
+}
+
 // ============ Config Types ============
 
 export interface Config {
-  neo4jUri: string;
-  neo4jUser: string;
-  neo4jPassword: string;
-  graphqlEndpoint: string;
-  batchSize: number;
-  pageSize: number;
+  neo4j: {
+    uri: string;
+    username: string;
+    password: string;
+  };
+  graphql: {
+    endpoint: string;
+  };
+  sync: {
+    batchSize: number;
+    pageSize: number;
+  };
+}
+
+// ============ Logging Types ============
+
+export type LogLevel = 'info' | 'warn' | 'error' | 'debug';
+
+export interface LogEntry {
+  timestamp: string;
+  level: LogLevel;
+  message: string;
+  context?: Record<string, unknown>;
 }
 
 // ============ Sync Types ============
 
 export interface SyncResult {
   nodesCreated: number;
+  nodesUpdated: number;
   edgesCreated: number;
-  errors: number;
+  edgesUpdated: number;
+  errors: string[];
   duration: number;
 }
 

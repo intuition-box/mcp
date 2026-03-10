@@ -13,7 +13,7 @@ import { logger } from '../utils/logger.js';
 /**
  * Check if string is valid Ethereum address
  */
-export function isValidAddress(value: string | null | undefined): boolean {
+export function isValidAddress(value: string | null | undefined): value is string {
   if (!value) return false;
   return /^0x[a-fA-F0-9]{40}$/.test(value);
 }
