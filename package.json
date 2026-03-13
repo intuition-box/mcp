@@ -12,10 +12,13 @@
     "build:general": "npm run build --workspace=packages/mcp-general",
     "build:trust": "npm run build --workspace=packages/mcp-trust",
     "build:playground": "npm run build --workspace=apps/playground",
-    "dev": "npm run dev --workspace=apps/playground",
+    "dev": "concurrently --names playground,general,trust --prefix-colors blue,green,yellow \"npm run dev:playground\" \"npm run dev:general\" \"npm run dev:trust\"",
     "dev:general": "npm run dev --workspace=packages/mcp-general",
     "dev:trust": "npm run dev --workspace=packages/mcp-trust",
     "dev:playground": "npm run dev --workspace=apps/playground",
     "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }
