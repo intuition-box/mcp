@@ -1,16 +1,9 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getMcpBySlug, getMcpRegistry, type McpEntry, type McpTool } from "@/lib/mcp-registry";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from "@/components/ui/card";
+import { getMcpBySlug, getMcpRegistry, type McpEntry } from "@/lib/mcp-registry";
 import { Button } from "@/components/ui/button";
+import { LiveToolGrid } from "@/components/live-tool-grid";
 
 // ---------------------------------------------------------------------------
 // Static param generation — pre-renders every known slug at build time
@@ -108,70 +101,6 @@ function CommandLineIcon({ className }: { className?: string }) {
   );
 }
 
-function PlayIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z"
-      />
-    </svg>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Tool card
-// ---------------------------------------------------------------------------
-
-function ToolCard({ tool, index }: { tool: McpTool; index: number }) {
-  return (
-    <Card className="group flex flex-col bg-white transition-shadow hover:shadow-md">
-      <CardHeader className="pb-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 transition-colors group-hover:bg-indigo-100">
-            <CommandLineIcon className="h-4 w-4" />
-          </div>
-          <CardTitle className="text-base font-semibold">
-            <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-sm text-gray-800">
-              {tool.name}
-            </code>
-          </CardTitle>
-        </div>
-      </CardHeader>
-
-      <CardContent className="flex-1 pt-0">
-        <CardDescription className="text-sm leading-relaxed text-gray-600">
-          {tool.description}
-        </CardDescription>
-      </CardContent>
-
-      <CardFooter className="pt-0">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled
-          className="w-full gap-2 text-gray-400"
-          aria-label={`Try ${tool.name} (coming soon)`}
-        >
-          <PlayIcon className="h-3.5 w-3.5" />
-          Try
-          <span className="ml-auto text-[10px] font-normal uppercase tracking-wider text-gray-400">
-            Soon
-          </span>
-        </Button>
-      </CardFooter>
-    </Card>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -183,8 +112,6 @@ export default async function PlaygroundPage({ params }: PageProps) {
   if (!entry) {
     notFound();
   }
-
-  const toolCount = entry.tools.length;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
@@ -211,35 +138,22 @@ export default async function PlaygroundPage({ params }: PageProps) {
             </p>
           </div>
 
-          <div className="flex shrink-0 flex-col items-end gap-2">
-            <div className="flex items-center gap-2 rounded-lg border bg-white px-4 py-2.5 text-sm text-gray-500 shadow-sm">
-              <CommandLineIcon className="h-4 w-4 text-indigo-500" />
-              <span>
-                <span className="font-semibold text-gray-900">{toolCount}</span>{" "}
-                {toolCount === 1 ? "tool" : "tools"}
-              </span>
+          {entry.serverUrl && (
+            <div className="flex shrink-0 items-center gap-1.5 self-start rounded-md bg-gray-50 px-3 py-1.5 text-xs text-gray-500 ring-1 ring-inset ring-gray-200">
+              <CommandLineIcon className="h-3.5 w-3.5 text-indigo-400" />
+              <span className="font-mono">{entry.serverUrl}</span>
             </div>
-            {entry.serverUrl && (
-              <div className="flex items-center gap-1.5 rounded-md bg-gray-50 px-3 py-1.5 text-xs text-gray-500 ring-1 ring-inset ring-gray-200">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-500" />
-                <span className="font-mono">{entry.serverUrl}</span>
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </section>
 
-      {/* Tool grid */}
+      {/* Live tool grid — fetches tools dynamically from the running MCP server */}
       <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-        <h2 className="mb-6 text-lg font-semibold text-gray-900">
-          Available Tools
-        </h2>
-
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {entry.tools.map((tool, i) => (
-            <ToolCard key={tool.name} tool={tool} index={i} />
-          ))}
-        </div>
+        <LiveToolGrid
+          slug={entry.slug}
+          serverUrl={entry.serverUrl}
+          registryTools={entry.tools}
+        />
       </section>
 
       {/* CTA banner */}
