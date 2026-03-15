@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { getMcpBySlug } from '@/lib/mcp-registry';
 
 const TIMEOUT_MS = 8000;
@@ -36,12 +37,41 @@ export async function GET(request: NextRequest) {
     const result = await Promise.race([connectAndFetch(), timeout]);
 
     return NextResponse.json({ tools: result.tools, serverUrl: entry.serverUrl });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json(
-      { error: 'Failed to reach MCP server', details: message },
-      { status: 502 }
-    );
+  } catch (streamableError) {
+    // StreamableHTTP failed — close the client before retrying with SSE
+    if (client) {
+      client.close().catch(() => {});
+      client = null;
+    }
+
+    try {
+      const sseUrl = new URL('/sse', entry.serverUrl);
+      client = new Client({ name: 'playground-inspector', version: '1.0.0' });
+      const sseTransport = new SSEClientTransport(sseUrl);
+
+      const connectAndFetch = async () => {
+        await client!.connect(sseTransport);
+        return client!.listTools();
+      };
+
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('SSE connection timed out')), TIMEOUT_MS)
+      );
+
+      const result = await Promise.race([connectAndFetch(), timeout]);
+
+      return NextResponse.json({ tools: result.tools, serverUrl: entry.serverUrl });
+    } catch (sseError) {
+      const streamableMessage = streamableError instanceof Error ? streamableError.message : String(streamableError);
+      const sseMessage = sseError instanceof Error ? sseError.message : String(sseError);
+      return NextResponse.json(
+        {
+          error: 'Failed to reach MCP server',
+          details: `StreamableHTTP: ${streamableMessage}; SSE: ${sseMessage}`,
+        },
+        { status: 502 }
+      );
+    }
   } finally {
     if (client) {
       client.close().catch(() => {});
