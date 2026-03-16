@@ -77,6 +77,7 @@ const TOOLS = [
 // Simple session tracking (from working portal)
 interface Transport {
   transport: StreamableHTTPServerTransport;
+  server: Server;
   lastActivity: number;
   createdAt: number;
 }
@@ -122,6 +123,7 @@ setInterval(() => {
 
 // Helper function to handle transport errors (from working portal)
 async function handleTransportError(
+  serverInstance: Server,
   transport: StreamableHTTPServerTransport,
   error: any
 ): Promise<void> {
@@ -133,7 +135,7 @@ async function handleTransportError(
       debug(
         `Attempting to reconnect (attempt ${retryCount + 1}/${MAX_RETRIES})...`
       );
-      await server.connect(transport);
+      await serverInstance.connect(transport);
       debug('Successfully reconnected transport');
       return;
     } catch (retryError) {
@@ -174,126 +176,130 @@ const tracingMiddleware = (req: Request, res: Response, next: Function) => {
   next();
 };
 
-// Create server instance with configuration
+// Server configuration
 const SERVER_CONFIG = {
   name: 'intuition-mcp-server',
   version: '0.7.0',
 } as const;
 
-const server = new Server(SERVER_CONFIG, {
-  capabilities: {
-    tools: {},
-  },
-});
+// Factory: creates a fully configured Server instance with all tool handlers
+function createServerInstance(): Server {
+  const instance = new Server(SERVER_CONFIG, {
+    capabilities: {
+      tools: {},
+    },
+  });
 
-// Set up request handlers
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
-    tools: TOOLS.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      inputSchema: tool.inputSchema,
-    })),
-  };
-});
+  instance.setRequestHandler(ListToolsRequestSchema, async () => {
+    return {
+      tools: TOOLS.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+      })),
+    };
+  });
 
-server.setRequestHandler(
-  CallToolRequestSchema,
-  async (request: CallToolRequest) => {
-    const startTime = performance.now();
-    console.log(
-      `[Tool Call Start] Tool: ${request.params.name} Args:`,
-      JSON.stringify(request.params.arguments, null, 2)
-    );
-
-    try {
-      let result: CallToolResult;
-
-      switch (request.params.name) {
-        case 'search_atoms': {
-          const args = atomSearchOperation.parameters.parse(
-            request.params.arguments
-          );
-          result = await atomSearchOperation.execute(args);
-          break;
-        }
-        case 'get_account_info': {
-          const args = getAccountInfoOperation.parameters.parse(
-            request.params.arguments
-          );
-          result = await getAccountInfoOperation.execute(args);
-          break;
-        }
-        case 'search_lists': {
-          const args = searchListsOperation.parameters.parse(
-            request.params.arguments
-          );
-          result = await searchListsOperation.execute(args);
-          break;
-        }
-        case 'get_following': {
-          const args = getFollowingOperation.parameters.parse(
-            request.params.arguments
-          );
-          result = await getFollowingOperation.execute(args);
-          break;
-        }
-        case 'get_followers': {
-          const args = getFollowersOperation.parameters.parse(
-            request.params.arguments
-          );
-          result = await getFollowersOperation.execute(args);
-          break;
-        }
-        case 'search_account_ids': {
-          const args = searchAccountIdsOperation.parameters.parse(
-            request.params.arguments
-          );
-          result = await searchAccountIdsOperation.execute(args);
-          break;
-        }
-        default:
-          throw new Error(`Unknown tool: ${request.params.name}`);
-      }
-
-      const duration = performance.now() - startTime;
+  instance.setRequestHandler(
+    CallToolRequestSchema,
+    async (request: CallToolRequest) => {
+      const startTime = performance.now();
       console.log(
-        `[Tool Call Success] Tool: ${
-          request.params.name
-        } Duration: ${duration.toFixed(2)}ms`
+        `[Tool Call Start] Tool: ${request.params.name} Args:`,
+        JSON.stringify(request.params.arguments, null, 2)
       );
 
-      // CRITICAL FIX: Return the actual tool result, not a wrapper
-      // The individual operations already return properly formatted CallToolResult
-      return result;
-    } catch (error) {
-      const duration = performance.now() - startTime;
-      console.error(
-        `[Tool Call Error] Tool: ${
-          request.params.name
-        } Duration: ${duration.toFixed(2)}ms`
-      );
-      console.error('Error details:', error);
-      console.error(
-        'Error stack:',
-        error instanceof Error ? error.stack : 'No stack trace'
-      );
+      try {
+        let result: CallToolResult;
 
-      // Return a properly formatted error response
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: `Error executing ${request.params.name}: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          },
-        ],
-        isError: true,
-      };
+        switch (request.params.name) {
+          case 'search_atoms': {
+            const args = atomSearchOperation.parameters.parse(
+              request.params.arguments
+            );
+            result = await atomSearchOperation.execute(args);
+            break;
+          }
+          case 'get_account_info': {
+            const args = getAccountInfoOperation.parameters.parse(
+              request.params.arguments
+            );
+            result = await getAccountInfoOperation.execute(args);
+            break;
+          }
+          case 'search_lists': {
+            const args = searchListsOperation.parameters.parse(
+              request.params.arguments
+            );
+            result = await searchListsOperation.execute(args);
+            break;
+          }
+          case 'get_following': {
+            const args = getFollowingOperation.parameters.parse(
+              request.params.arguments
+            );
+            result = await getFollowingOperation.execute(args);
+            break;
+          }
+          case 'get_followers': {
+            const args = getFollowersOperation.parameters.parse(
+              request.params.arguments
+            );
+            result = await getFollowersOperation.execute(args);
+            break;
+          }
+          case 'search_account_ids': {
+            const args = searchAccountIdsOperation.parameters.parse(
+              request.params.arguments
+            );
+            result = await searchAccountIdsOperation.execute(args);
+            break;
+          }
+          default:
+            throw new Error(`Unknown tool: ${request.params.name}`);
+        }
+
+        const duration = performance.now() - startTime;
+        console.log(
+          `[Tool Call Success] Tool: ${
+            request.params.name
+          } Duration: ${duration.toFixed(2)}ms`
+        );
+
+        return result;
+      } catch (error) {
+        const duration = performance.now() - startTime;
+        console.error(
+          `[Tool Call Error] Tool: ${
+            request.params.name
+          } Duration: ${duration.toFixed(2)}ms`
+        );
+        console.error('Error details:', error);
+        console.error(
+          'Error stack:',
+          error instanceof Error ? error.stack : 'No stack trace'
+        );
+
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Error executing ${request.params.name}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            },
+          ],
+          isError: true,
+        };
+      }
     }
-  }
-);
+  );
+
+  return instance;
+}
+
+// Global instance used only for stdio transport
+const server = createServerInstance();
 
 async function runStdioServer() {
   debug('Starting MCP Server with stdio transport');
@@ -381,7 +387,8 @@ async function runHttpServer() {
 
       if (!sessionId) {
         console.log('[New Session Request] Initializing new session');
-        // New initialization request
+        // Create a dedicated server instance for this session
+        const sessionServer = createServerInstance();
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (sessionId) => {
@@ -390,6 +397,7 @@ async function runHttpServer() {
             );
             transports[sessionId] = {
               transport,
+              server: sessionServer,
               lastActivity: Date.now(),
               createdAt: Date.now(),
             };
@@ -397,7 +405,7 @@ async function runHttpServer() {
         });
 
         try {
-          await server.connect(transport);
+          await sessionServer.connect(transport);
           await transport.handleRequest(req, res, req.body);
         } catch (error) {
           console.error(
@@ -488,7 +496,7 @@ async function runHttpServer() {
             '[Transport Recovery] Attempting to reconnect transport...'
           );
           try {
-            await handleTransportError(session.transport, error);
+            await handleTransportError(session.server, session.transport, error);
             console.log(
               '[Transport Recovery] Successfully recovered transport'
             );
@@ -549,6 +557,7 @@ async function runHttpServer() {
 
   // SSE endpoint (keep for backward compatibility)
   app.get('/sse', async (req, res) => {
+    const sseServer = createServerInstance();
     const transport = new SSEServerTransport('/messages', res);
     sseTransports[transport.sessionId] = transport;
 
@@ -556,7 +565,7 @@ async function runHttpServer() {
       delete sseTransports[transport.sessionId];
     });
 
-    await server.connect(transport);
+    await sseServer.connect(transport);
   });
 
   // SSE message endpoint (keep for backward compatibility)
