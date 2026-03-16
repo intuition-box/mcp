@@ -1,0 +1,18 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+COPY packages/mcp-trust/package*.json ./packages/mcp-trust/
+
+RUN npm install --workspace=packages/mcp-trust
+
+COPY packages/mcp-trust ./packages/mcp-trust
+
+RUN npm run build:trust
+
+EXPOSE 3002
+
+ENV SERVER_MODE=http
+
+CMD ["node", "packages/mcp-trust/dist/index.js"]
