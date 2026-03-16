@@ -6,13 +6,25 @@
  */
 
 import 'dotenv/config';
+import express, { Request, Response } from 'express';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+  CallToolRequest,
+  CallToolResult,
+} from '@modelcontextprotocol/sdk/types.js';
+import { randomUUID } from 'node:crypto';
 import {
   loadConfig,
   initializeDriver,
   verifyConnection,
   closeDriver,
   getSession,
-  setNeo4jAvailable
+  setNeo4jAvailable,
+  isNeo4jAvailable
 } from './config/neo4j.js';
 import { initializeGraphQLClient } from './graphql/client.js';
 import { setupSchema } from './graph/schema.js';
@@ -35,27 +47,31 @@ import {
 
 /**
  * Initialize the trust engine.
- * Neo4j failure is non-fatal — the server starts regardless and tools
- * that require Neo4j will return descriptive errors until it reconnects.
+ * All failures are non-fatal — the server stays alive regardless.
+ * Tools that require Neo4j will return descriptive errors until it connects.
  */
 export async function initialize(): Promise<void> {
-  const config = loadConfig();
-
-  initializeDriver(config);
-  initializeGraphQLClient(config);
-
   try {
-    const connected = await verifyConnection();
-    if (connected) {
-      setNeo4jAvailable(true);
-      await setupSchema();
-      log('info', 'Trust engine initialized with Neo4j connection');
-    } else {
-      log('warn', 'Neo4j is unreachable — starting without database connectivity. Tools requiring Neo4j will return errors until the connection is restored.');
+    const config = loadConfig();
+
+    initializeDriver(config);
+    initializeGraphQLClient(config);
+
+    try {
+      const connected = await verifyConnection();
+      if (connected) {
+        setNeo4jAvailable(true);
+        await setupSchema();
+        log('info', 'Trust engine initialized with Neo4j connection');
+      } else {
+        log('warn', 'Neo4j is unreachable — starting without database connectivity. Tools requiring Neo4j will return errors until the connection is restored.');
+      }
+    } catch (error) {
+      log('warn', 'Neo4j connection failed during startup', { error: String(error) });
+      log('warn', 'Starting without database connectivity. Tools requiring Neo4j will return errors until the connection is restored.');
     }
   } catch (error) {
-    log('warn', 'Neo4j connection failed during startup', { error: String(error) });
-    log('warn', 'Starting without database connectivity. Tools requiring Neo4j will return errors until the connection is restored.');
+    log('warn', 'Trust engine initialization failed — server will continue without backend services', { error: String(error) });
   }
 }
 
@@ -74,6 +90,375 @@ export { verifyConnection, isNeo4jAvailable } from './config/neo4j.js';
 
 // Export trust algorithms
 export * from './algorithms/index.js';
+
+// ============ MCP Server Setup ============
+
+const SERVER_CONFIG = {
+  name: 'intuition-trust-engine',
+  version: '1.2.0',
+} as const;
+
+const TRUST_TOOLS = [
+  {
+    name: 'get_graph_stats',
+    description: 'Get Neo4j graph statistics including node counts, edge counts, and label distributions.',
+    inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'compute_eigentrust',
+    description: 'Compute global EigenTrust scores across the entire attestation graph. Returns ranked trust scores for all addresses.',
+    inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'compute_agentrank',
+    description: 'Compute global AgentRank (PageRank-based) scores across the attestation graph. Returns ranked influence scores.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        topN: { type: 'number', description: 'Number of top agents to return (default 20)' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'compute_composite_score',
+    description: 'Compute a composite trust score for an address combining EigenTrust, AgentRank, and optionally personalized transitive trust.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        address: { type: 'string', description: 'The address to evaluate' },
+        fromAddress: { type: 'string', description: 'Optional source address for personalized transitive trust perspective' },
+      },
+      required: ['address'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'compute_personalized_trust',
+    description: 'Compute personalized trust score from one address to another, following attestation paths in the graph.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        fromAddress: { type: 'string', description: 'Source address' },
+        toAddress: { type: 'string', description: 'Target address' },
+        maxHops: { type: 'number', description: 'Maximum path length (default 3)' },
+        minStake: { type: 'number', description: 'Minimum stake threshold (default 0)' },
+      },
+      required: ['fromAddress', 'toAddress'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'find_trust_paths',
+    description: 'Find all trust paths between two addresses in the attestation graph, ranked by strength.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        fromAddress: { type: 'string', description: 'Source address' },
+        toAddress: { type: 'string', description: 'Target address' },
+        maxHops: { type: 'number', description: 'Maximum path length (default 3)' },
+      },
+      required: ['fromAddress', 'toAddress'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'run_sync',
+    description: 'Sync attestation data from the Intuition GraphQL API into the Neo4j graph.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        maxPages: { type: 'number', description: 'Maximum pages to sync (omit for all)' },
+      },
+      additionalProperties: false,
+    },
+  },
+] as const;
+
+// MCP tool call handler — routes to existing engine functions
+async function handleToolCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
+  switch (name) {
+    case 'get_graph_stats': {
+      const stats = await getGraphStats();
+      return { content: [{ type: 'text', text: JSON.stringify(stats, null, 2) }] };
+    }
+    case 'compute_eigentrust': {
+      const result = await computeEigenTrust();
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            iterations: result.iterations,
+            converged: result.converged,
+            computationTimeMs: result.computationTimeMs,
+            totalScored: result.scores.length,
+            top20: result.scores.slice(0, 20),
+          }, null, 2),
+        }],
+      };
+    }
+    case 'compute_agentrank': {
+      const topN = typeof args.topN === 'number' ? args.topN : 20;
+      const result = await computeAgentRank(undefined, topN);
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            iterations: result.iterations,
+            converged: result.converged,
+            computationTimeMs: result.computationTimeMs,
+            totalRanked: result.ranks.size,
+            influenceMetrics: result.influenceMetrics,
+            topAgents: result.topAgents,
+          }, null, 2),
+        }],
+      };
+    }
+    case 'compute_composite_score': {
+      const address = args.address as string;
+      const fromAddress = args.fromAddress as string | undefined;
+      const result = await computeCompositeScore(address, fromAddress);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    }
+    case 'compute_personalized_trust': {
+      const result = await computePersonalizedTrust({
+        fromAddress: args.fromAddress as string,
+        toAddress: args.toAddress as string,
+        maxHops: typeof args.maxHops === 'number' ? args.maxHops : 3,
+        minStake: typeof args.minStake === 'number' ? args.minStake : 0,
+      });
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    }
+    case 'find_trust_paths': {
+      const maxHops = typeof args.maxHops === 'number' ? args.maxHops : 3;
+      const result = await findTrustPaths(args.fromAddress as string, args.toAddress as string, maxHops);
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            pathCount: result.paths.length,
+            nodesVisited: result.nodesVisited,
+            paths: result.paths.slice(0, 10),
+            strongestPath: result.strongestPath,
+          }, null, 2),
+        }],
+      };
+    }
+    case 'run_sync': {
+      const maxPages = typeof args.maxPages === 'number' ? args.maxPages : undefined;
+      await runSync({ maxPages });
+      return { content: [{ type: 'text', text: 'Sync completed successfully.' }] };
+    }
+    default:
+      throw new Error(`Unknown tool: ${name}`);
+  }
+}
+
+// Factory: creates a configured MCP Server instance with trust tool handlers
+function createTrustServerInstance(): Server {
+  const instance = new Server(SERVER_CONFIG, {
+    capabilities: { tools: {} },
+  });
+
+  instance.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: TRUST_TOOLS.map(tool => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+    })),
+  }));
+
+  instance.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest) => {
+    const { name } = request.params;
+    const args = (request.params.arguments ?? {}) as Record<string, unknown>;
+    log('info', `Tool call: ${name}`, { args });
+
+    try {
+      return await handleToolCall(name, args);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log('error', `Tool call failed: ${name}`, { error: message });
+      return {
+        content: [{ type: 'text' as const, text: `Error executing ${name}: ${message}` }],
+        isError: true,
+      };
+    }
+  });
+
+  return instance;
+}
+
+// ============ HTTP Server ============
+
+interface TransportSession {
+  transport: StreamableHTTPServerTransport;
+  server: Server;
+  lastActivity: number;
+  createdAt: number;
+}
+
+const SESSION_TIMEOUT = 5 * 60 * 1000;
+const SESSION_CLEANUP_INTERVAL = 60 * 1000;
+const SESSION_MAX_AGE = 30 * 60 * 1000;
+
+const transports: Record<string, TransportSession> = {};
+const sseTransports: Record<string, SSEServerTransport> = {};
+
+// Cleanup stale sessions periodically
+function startSessionCleanup(): void {
+  setInterval(() => {
+    const now = Date.now();
+    Object.entries(transports).forEach(async ([sessionId, session]) => {
+      const isInactive = now - session.lastActivity > SESSION_TIMEOUT;
+      const isExpired = now - session.createdAt > SESSION_MAX_AGE;
+      if (isInactive || isExpired) {
+        log('info', `Cleaning up ${isInactive ? 'inactive' : 'expired'} session: ${sessionId}`);
+        try {
+          await session.transport.close();
+        } catch (error) {
+          log('warn', 'Error closing transport during cleanup', { error: String(error) });
+        } finally {
+          delete transports[sessionId];
+        }
+      }
+    });
+  }, SESSION_CLEANUP_INTERVAL);
+}
+
+async function runHttpServer(): Promise<void> {
+  const app = express();
+  const port = parseInt(process.env.PORT || '3002', 10);
+  app.use(express.json());
+
+  // Health check — always available regardless of Neo4j state
+  app.get('/health', (_req: Request, res: Response) => {
+    res.status(200).json({
+      status: 'ok',
+      name: SERVER_CONFIG.name,
+      version: SERVER_CONFIG.version,
+      neo4j: isNeo4jAvailable() ? 'connected' : 'unavailable',
+      activeSessions: Object.keys(transports).length,
+      activeSSESessions: Object.keys(sseTransports).length,
+      uptime: process.uptime(),
+    });
+  });
+
+  // MCP endpoint — StreamableHTTP transport
+  app.post('/mcp', async (req: Request, res: Response) => {
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+    try {
+      if (!sessionId) {
+        // New session
+        const sessionServer = createTrustServerInstance();
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => randomUUID(),
+          onsessioninitialized: (newSessionId) => {
+            log('info', `MCP session initialized: ${newSessionId}`);
+            transports[newSessionId] = {
+              transport,
+              server: sessionServer,
+              lastActivity: Date.now(),
+              createdAt: Date.now(),
+            };
+          },
+        });
+
+        try {
+          await sessionServer.connect(transport);
+          await transport.handleRequest(req, res, req.body);
+        } catch (error) {
+          log('error', 'Failed to initialize MCP session', { error: String(error) });
+          try { await transport.close(); } catch (_) { /* cleanup */ }
+          if (!res.writableEnded) {
+            res.status(500).json({
+              jsonrpc: '2.0',
+              error: { code: -32001, message: 'Failed to initialize MCP connection' },
+              id: null,
+            });
+          }
+        }
+        return;
+      }
+
+      // Existing session
+      const session = transports[sessionId];
+      if (!session) {
+        res.status(401).json({
+          jsonrpc: '2.0',
+          error: { code: -32001, message: 'Invalid session, please reinitialize' },
+          id: null,
+        });
+        return;
+      }
+
+      session.lastActivity = Date.now();
+      await session.transport.handleRequest(req, res, req.body);
+    } catch (error) {
+      log('error', 'MCP request error', { error: String(error) });
+      if (!res.writableEnded) {
+        res.status(500).json({
+          jsonrpc: '2.0',
+          error: { code: -32603, message: 'Internal server error' },
+          id: null,
+        });
+      }
+    }
+  });
+
+  // SSE endpoint for backward compatibility
+  app.get('/sse', async (_req: Request, res: Response) => {
+    const sseServer = createTrustServerInstance();
+    const transport = new SSEServerTransport('/messages', res);
+    sseTransports[transport.sessionId] = transport;
+    res.on('close', () => { delete sseTransports[transport.sessionId]; });
+    await sseServer.connect(transport);
+  });
+
+  app.post('/messages', async (req: Request, res: Response) => {
+    const sessionId = req.query.sessionId as string;
+    const transport = sseTransports[sessionId];
+    if (transport) {
+      await transport.handlePostMessage(req, res, req.body);
+    } else {
+      res.status(400).send('No transport found for sessionId');
+    }
+  });
+
+  // Session cleanup on DELETE
+  app.delete('/mcp', async (req: Request, res: Response) => {
+    const sessionId = req.headers['mcp-session-id'] as string;
+    if (sessionId && transports[sessionId]) {
+      try { await transports[sessionId].transport.close(); } catch (_) { /* cleanup */ }
+      delete transports[sessionId];
+    }
+    res.status(200).send('Session terminated');
+  });
+
+  // Start the HTTP server unconditionally — this MUST happen before Neo4j init
+  const httpServer = app.listen(port, '0.0.0.0', () => {
+    log('info', `Trust engine HTTP server listening on 0.0.0.0:${port}`);
+  });
+
+  httpServer.keepAliveTimeout = 120000;
+  httpServer.headersTimeout = 120000;
+
+  startSessionCleanup();
+
+  // Attempt Neo4j connection in background — never kills the server
+  initialize().catch((error) => {
+    log('warn', 'Background initialization failed', { error: String(error) });
+  });
+
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    log('info', 'SIGTERM received, shutting down gracefully');
+    httpServer.close(async () => {
+      await shutdown();
+      log('info', 'Server closed');
+    });
+  });
+}
 
 // ============ CLI Command Handlers ============
 
@@ -747,7 +1132,7 @@ async function main(): Promise<void> {
         const address = process.argv[3];
         if (!address) {
           console.error('Usage: npm run dev query <address>');
-          process.exit(1);
+          return;
         }
         const attestations = await getAttestationsForAddress(address);
         console.log('\nAttestations for', address);
@@ -776,7 +1161,7 @@ async function main(): Promise<void> {
         const scoreAddr = process.argv[3];
         if (!scoreAddr) {
           console.error('Usage: npm run dev score <address> [--from <address>]');
-          process.exit(1);
+          return;
         }
         const fromIdx = process.argv.indexOf('--from');
         const scoreFrom = fromIdx !== -1 && process.argv[fromIdx + 1]
@@ -791,7 +1176,7 @@ async function main(): Promise<void> {
         const toAddr = process.argv[4];
         if (!fromAddr || !toAddr) {
           console.error('Usage: npm run dev trust <fromAddress> <toAddress>');
-          process.exit(1);
+          return;
         }
         await runTrustCommand(fromAddr, toAddr);
         break;
@@ -801,7 +1186,7 @@ async function main(): Promise<void> {
         const hops = process.argv[4] ? parseInt(process.argv[4], 10) : 3;
         if (!sourceAddr) {
           console.error('Usage: npm run dev network <address> [maxHops]');
-          process.exit(1);
+          return;
         }
         await runNetworkCommand(sourceAddr, hops);
         break;
@@ -812,7 +1197,7 @@ async function main(): Promise<void> {
         const pathHops = process.argv[5] ? parseInt(process.argv[5], 10) : 3;
         if (!pathFrom || !pathTo) {
           console.error('Usage: npm run dev paths <fromAddress> <toAddress> [maxHops]');
-          process.exit(1);
+          return;
         }
         await runPathsCommand(pathFrom, pathTo, pathHops);
         break;
@@ -871,10 +1256,18 @@ Examples:
     }
   } catch (error) {
     log('error', 'Command failed', { error: String(error) });
-    process.exit(1);
   } finally {
     await shutdown();
   }
 }
 
-main();
+// Route based on server mode — HTTP starts Express first, CLI runs commands directly
+const serverMode = process.env.SERVER_MODE || 'cli';
+
+if (serverMode === 'http') {
+  runHttpServer().catch((error) => {
+    console.error('Fatal HTTP server error:', error);
+  });
+} else {
+  main();
+}
