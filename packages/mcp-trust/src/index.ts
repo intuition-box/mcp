@@ -11,7 +11,8 @@ import {
   initializeDriver,
   verifyConnection,
   closeDriver,
-  getSession
+  getSession,
+  setNeo4jAvailable
 } from './config/neo4j.js';
 import { initializeGraphQLClient } from './graphql/client.js';
 import { setupSchema } from './graph/schema.js';
@@ -33,22 +34,29 @@ import {
 } from './algorithms/index.js';
 
 /**
- * Initialize the trust engine
+ * Initialize the trust engine.
+ * Neo4j failure is non-fatal — the server starts regardless and tools
+ * that require Neo4j will return descriptive errors until it reconnects.
  */
 export async function initialize(): Promise<void> {
   const config = loadConfig();
 
   initializeDriver(config);
-  const connected = await verifyConnection();
-
-  if (!connected) {
-    throw new Error('Failed to connect to Neo4j');
-  }
-
   initializeGraphQLClient(config);
-  await setupSchema();
 
-  log('info', 'Trust engine initialized');
+  try {
+    const connected = await verifyConnection();
+    if (connected) {
+      setNeo4jAvailable(true);
+      await setupSchema();
+      log('info', 'Trust engine initialized with Neo4j connection');
+    } else {
+      log('warn', 'Neo4j is unreachable — starting without database connectivity. Tools requiring Neo4j will return errors until the connection is restored.');
+    }
+  } catch (error) {
+    log('warn', 'Neo4j connection failed during startup', { error: String(error) });
+    log('warn', 'Starting without database connectivity. Tools requiring Neo4j will return errors until the connection is restored.');
+  }
 }
 
 /**
@@ -62,7 +70,7 @@ export async function shutdown(): Promise<void> {
 // Export main functionality
 export { runSync } from './indexer/sync.js';
 export { getGraphStats, getAttestationsForAddress } from './graph/queries.js';
-export { verifyConnection } from './config/neo4j.js';
+export { verifyConnection, isNeo4jAvailable } from './config/neo4j.js';
 
 // Export trust algorithms
 export * from './algorithms/index.js';

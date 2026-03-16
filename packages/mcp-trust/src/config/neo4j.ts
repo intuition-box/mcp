@@ -6,6 +6,21 @@ import neo4j, { Driver, Session, auth } from 'neo4j-driver';
 import { Config } from '../types/index.js';
 
 let driver: Driver | null = null;
+let neo4jAvailable = false;
+
+/**
+ * Check if Neo4j is currently reachable
+ */
+export function isNeo4jAvailable(): boolean {
+  return neo4jAvailable;
+}
+
+/**
+ * Update Neo4j availability state
+ */
+export function setNeo4jAvailable(available: boolean): void {
+  neo4jAvailable = available;
+}
 
 /**
  * Load and validate configuration from environment variables
@@ -71,9 +86,16 @@ export function getDriver(): Driver {
 }
 
 /**
- * Get a new session for database operations
+ * Get a new session for database operations.
+ * Throws a descriptive error if Neo4j is not available.
  */
 export function getSession(): Session {
+  if (!neo4jAvailable) {
+    throw new Error(
+      'Neo4j is currently unavailable. The server started without a database connection. ' +
+      'Check Neo4j configuration and connectivity.'
+    );
+  }
   return getDriver().session();
 }
 
