@@ -1,0 +1,18 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+COPY packages/mcp-general/package*.json ./packages/mcp-general/
+
+RUN npm install --workspace=packages/mcp-general
+
+COPY packages/mcp-general ./packages/mcp-general
+
+RUN npm run build:general
+
+EXPOSE 3001
+
+ENV SERVER_MODE=http
+
+CMD ["node", "packages/mcp-general/dist/index.js"]
