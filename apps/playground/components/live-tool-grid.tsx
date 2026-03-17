@@ -191,6 +191,31 @@ function ErrorIcon({ className }: { className?: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Placeholder helpers
+// ---------------------------------------------------------------------------
+
+/** Custom placeholders keyed by "toolName::fieldName". */
+const FIELD_PLACEHOLDERS: Record<string, string> = {
+  'get-account-info::address': 'e.g. 0xC3FBd93fCb4c12FB159424A3B0d6E30b0e8c364D',
+  'get_account_info::address': 'e.g. 0xC3FBd93fCb4c12FB159424A3B0d6E30b0e8c364D',
+};
+
+function getFieldPlaceholder(
+  toolName: string,
+  fieldName: string,
+  prop: SchemaProperty,
+  isRequired: boolean,
+): string {
+  // Check for a tool-specific override first
+  const override = FIELD_PLACEHOLDERS[`${toolName}::${fieldName}`];
+  if (override) return override;
+
+  if (prop.type === 'array') return 'e.g. ethereum, bitcoin';
+  if (prop.type === 'object') return 'Enter JSON...';
+  return isRequired ? 'Required' : 'Optional';
+}
+
+// ---------------------------------------------------------------------------
 // ToolCard — interactive with Try/Run functionality
 // ---------------------------------------------------------------------------
 
@@ -263,11 +288,28 @@ function ToolCard({
           args[key] = num;
         } else if (prop.type === 'boolean') {
           args[key] = value === 'true';
-        } else if (prop.type === 'array' || prop.type === 'object') {
+        } else if (prop.type === 'object') {
           try {
             args[key] = JSON.parse(value);
           } catch {
             throw new Error(`"${key}" must be valid JSON`);
+          }
+        } else if (prop.type === 'array') {
+          // Auto-wrap plain text input into a JSON array.
+          // If the user typed valid JSON array syntax, honour it as-is.
+          const trimmed = value.trim();
+          if (trimmed.startsWith('[')) {
+            try {
+              args[key] = JSON.parse(trimmed);
+            } catch {
+              throw new Error(`"${key}" looks like JSON but is not valid`);
+            }
+          } else {
+            // Comma-separated values -> string array
+            args[key] = trimmed
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean);
           }
         } else {
           args[key] = value;
@@ -477,13 +519,7 @@ function ToolCard({
                         value={formValues[key] ?? ''}
                         onChange={(e) => updateField(key, e.target.value)}
                         disabled={loading}
-                        placeholder={
-                          prop.type === 'array' || prop.type === 'object'
-                            ? 'Enter JSON...'
-                            : isRequired
-                              ? 'Required'
-                              : 'Optional'
-                        }
+                        placeholder={getFieldPlaceholder(tool.name, key, prop, isRequired)}
                         className="h-9 text-sm"
                       />
                     )}
