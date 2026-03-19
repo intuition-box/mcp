@@ -799,7 +799,7 @@ export function LiveToolGrid({ slug, serverUrl, registryTools }: LiveToolGridPro
             rel="noopener noreferrer"
             className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700"
           >
-            Open Inspector
+            Inspect Locally
             <ExternalLinkIcon className="h-3.5 w-3.5" />
           </a>
         </div>
