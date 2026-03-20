@@ -4,7 +4,9 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { getMcpBySlug } from '@/lib/mcp-registry';
 
-const TIMEOUT_MS = 30000;
+export const maxDuration = 300;
+
+const TIMEOUT_MS = 300000;
 
 export async function POST(request: NextRequest) {
   let body: { slug?: string; toolName?: string; arguments?: Record<string, unknown> };

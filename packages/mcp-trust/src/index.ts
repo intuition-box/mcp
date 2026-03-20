@@ -163,6 +163,18 @@ const TRUST_TOOLS = [
     },
   },
   {
+    name: 'simulate_sybil_attack',
+    description: 'Simulate a sybil attack on the trust graph and measure resistance. Injects fake nodes with collusion edges and compares EigenTrust and AgentRank scores before and after.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        numSybilNodes: { type: 'number', description: 'Number of sybil nodes to inject (default 50)' },
+        targetAddress: { type: 'string', description: 'Optional target address to attempt boosting' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'run_sync',
     description: 'Sync attestation data from the Intuition GraphQL API into the Neo4j graph.',
     inputSchema: {
@@ -240,6 +252,34 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
             nodesVisited: result.nodesVisited,
             paths: result.paths.slice(0, 10),
             strongestPath: result.strongestPath,
+          }, null, 2),
+        }],
+      };
+    }
+    case 'simulate_sybil_attack': {
+      const numSybilNodes = typeof args.numSybilNodes === 'number' ? args.numSybilNodes : 50;
+      const targetAddress = typeof args.targetAddress === 'string' ? args.targetAddress : undefined;
+      const numCollusionEdges = numSybilNodes * 4;
+      const result = await simulateSybilAttack({
+        numSybilNodes,
+        numCollusionEdges,
+        targetAddress,
+      });
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            sybilNodesCreated: result.sybilNodesCreated,
+            sybilEdgesCreated: result.sybilEdgesCreated,
+            computationTimeMs: result.computationTimeMs,
+            eigentrustResistance: result.impact.eigentrustResistance,
+            agentrankResistance: result.impact.agentrankResistance,
+            maxScoreChangeEigentrust: result.impact.maxScoreChangeEigentrust,
+            maxScoreChangeAgentrank: result.impact.maxScoreChangeAgentrank,
+            verdict: {
+              eigentrust: `${Math.round(result.impact.eigentrustResistance * 100)}% resistance`,
+              agentrank: `${Math.round(result.impact.agentrankResistance * 100)}% resistance`,
+            },
           }, null, 2),
         }],
       };
