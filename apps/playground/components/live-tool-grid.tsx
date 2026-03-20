@@ -229,10 +229,12 @@ function ToolCard({
   tool,
   isLive,
   slug,
+  lastSyncedAt,
 }: {
   tool: LiveTool;
   isLive: boolean;
   slug: string;
+  lastSyncedAt?: string | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
@@ -513,15 +515,22 @@ function ToolCard({
                         <option value="false">false</option>
                       </select>
                     ) : (
-                      <Input
-                        id={`param-${tool.name}-${key}`}
-                        type={inputType}
-                        value={formValues[key] ?? ''}
-                        onChange={(e) => updateField(key, e.target.value)}
-                        disabled={loading}
-                        placeholder={getFieldPlaceholder(tool.name, key, prop, isRequired)}
-                        className="h-9 text-sm"
-                      />
+                      <>
+                        <Input
+                          id={`param-${tool.name}-${key}`}
+                          type={inputType}
+                          value={formValues[key] ?? ''}
+                          onChange={(e) => updateField(key, e.target.value)}
+                          disabled={loading}
+                          placeholder={getFieldPlaceholder(tool.name, key, prop, isRequired)}
+                          className="h-9 text-sm"
+                        />
+                        {tool.name === 'run_sync' && key === 'maxPages' && lastSyncedAt && (
+                          <p className="mt-1 text-[11px] text-gray-400">
+                            Last synced: {lastSyncedAt}
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                 );
@@ -684,6 +693,7 @@ export function LiveToolGrid({ slug, serverUrl, registryTools }: LiveToolGridPro
   const [status, setStatus] = useState<ConnectionStatus>('loading');
   const [tools, setTools] = useState<LiveTool[]>([]);
   const [copied, setCopied] = useState<string | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -707,6 +717,35 @@ export function LiveToolGrid({ slug, serverUrl, registryTools }: LiveToolGridPro
 
         setTools(data.tools ?? []);
         setStatus('live');
+
+        // Fetch last sync time for trust-score playground
+        if (slug === 'trust-score') {
+          try {
+            const statsRes = await fetch('/api/mcp/call-tool', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ slug, toolName: 'get_graph_stats', arguments: {} }),
+            });
+            if (statsRes.ok) {
+              const statsData = await statsRes.json();
+              const text = statsData?.result?.content?.[0]?.text;
+              if (text) {
+                const parsed = JSON.parse(text);
+                if (parsed?.lastSyncedAt) {
+                  const d = new Date(parsed.lastSyncedAt);
+                  setLastSyncedAt(d.toLocaleString('en-US', {
+                    month: 'short', day: 'numeric',
+                    hour: '2-digit', minute: '2-digit',
+                    timeZone: 'UTC',
+                    timeZoneName: 'short',
+                  }));
+                }
+              }
+            }
+          } catch {
+            // silently ignore
+          }
+        }
       } catch {
         if (cancelled) return;
         // Fall back to registry definitions
@@ -779,6 +818,7 @@ export function LiveToolGrid({ slug, serverUrl, registryTools }: LiveToolGridPro
                 tool={tool}
                 isLive={status === 'live'}
                 slug={slug}
+                lastSyncedAt={lastSyncedAt}
               />
             ))}
       </div>

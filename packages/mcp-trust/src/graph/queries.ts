@@ -133,6 +133,7 @@ export async function getGraphStats(): Promise<{
   addressCount: number;
   attestationCount: number;
   predicateDistribution: Record<string, number>;
+  lastSyncedAt: string | null;
 }> {
   const session = getSession();
 
@@ -151,6 +152,11 @@ export async function getGraphStats(): Promise<{
       LIMIT 20
     `);
 
+    const metaResult = await session.run(`
+      OPTIONAL MATCH (m:Meta {key: 'sync'})
+      RETURN m.lastSyncedAt AS lastSyncedAt
+    `);
+
     const counts = countResult.records[0];
     const predicateDistribution: Record<string, number> = {};
 
@@ -160,10 +166,14 @@ export async function getGraphStats(): Promise<{
       predicateDistribution[predicate] = count;
     }
 
+    const lastSyncedAt: string | null =
+      metaResult.records[0]?.get('lastSyncedAt') ?? null;
+
     return {
       addressCount: counts.get('addressCount').toNumber(),
       attestationCount: counts.get('attestationCount').toNumber(),
       predicateDistribution,
+      lastSyncedAt,
     };
   } finally {
     await session.close();

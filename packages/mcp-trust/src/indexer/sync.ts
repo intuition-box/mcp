@@ -7,7 +7,8 @@ import {
   loadConfig,
   initializeDriver,
   verifyConnection,
-  closeDriver
+  closeDriver,
+  getSession
 } from '../config/neo4j.js';
 import { initializeGraphQLClient, fetchAllTriples } from '../graphql/client.js';
 import { transformTriples } from './transform.js';
@@ -120,6 +121,17 @@ export async function runSync(options: {
 
     result.nodesCreated = totalNodes;
     result.edgesCreated = totalEdges;
+
+    // Write sync timestamp to Neo4j
+    const metaSession = getSession();
+    try {
+      await metaSession.run(
+        `MERGE (m:Meta {key: 'sync'}) SET m.lastSyncedAt = $now`,
+        { now: new Date().toISOString() }
+      );
+    } finally {
+      await metaSession.close();
+    }
 
     // Get final stats
     const stats = await getGraphStats();
