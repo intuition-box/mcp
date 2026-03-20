@@ -1,27 +1,22 @@
 /**
  * Neo4j database configuration and connection management
  */
-
 import neo4j, { Driver, Session, auth } from 'neo4j-driver';
 import { Config } from '../types/index.js';
-
 let driver: Driver | null = null;
 let neo4jAvailable = false;
-
 /**
  * Check if Neo4j is currently reachable
  */
 export function isNeo4jAvailable(): boolean {
   return neo4jAvailable;
 }
-
 /**
  * Update Neo4j availability state
  */
 export function setNeo4jAvailable(available: boolean): void {
   neo4jAvailable = available;
 }
-
 /**
  * Load and validate configuration from environment variables
  */
@@ -32,12 +27,10 @@ export function loadConfig(): Config {
     'NEO4J_PASSWORD',
     'GRAPHQL_ENDPOINT'
   ];
-
   const missing = requiredVars.filter(v => !process.env[v]);
   if (missing.length > 0) {
     throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
   }
-
   return {
     neo4j: {
       uri: process.env.NEO4J_URI!,
@@ -53,7 +46,6 @@ export function loadConfig(): Config {
     },
   };
 }
-
 /**
  * Initialize Neo4j driver with connection pooling
  */
@@ -61,7 +53,6 @@ export function initializeDriver(config: Config): Driver {
   if (driver) {
     return driver;
   }
-
   driver = neo4j.driver(
     config.neo4j.uri,
     auth.basic(config.neo4j.username, config.neo4j.password),
@@ -71,10 +62,8 @@ export function initializeDriver(config: Config): Driver {
       connectionTimeout: 30000,
     }
   );
-
   return driver;
 }
-
 /**
  * Get the current driver instance
  */
@@ -84,7 +73,6 @@ export function getDriver(): Driver {
   }
   return driver;
 }
-
 /**
  * Get a new session for database operations.
  * Throws a descriptive error if Neo4j is not available.
@@ -98,12 +86,13 @@ export function getSession(): Session {
   }
   return getDriver().session();
 }
-
 /**
- * Verify database connection
+ * Verify database connection using driver directly,
+ * bypassing the availability gate so startup can check connectivity.
  */
 export async function verifyConnection(): Promise<boolean> {
-  const session = getSession();
+  const d = getDriver();
+  const session = d.session();
   try {
     const result = await session.run('RETURN 1 as test');
     return result.records.length > 0;
@@ -114,7 +103,6 @@ export async function verifyConnection(): Promise<boolean> {
     await session.close();
   }
 }
-
 /**
  * Close the driver connection
  */
