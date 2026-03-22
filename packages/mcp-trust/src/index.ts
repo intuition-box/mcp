@@ -174,17 +174,6 @@ const TRUST_TOOLS = [
       additionalProperties: false,
     },
   },
-  {
-    name: 'run_sync',
-    description: 'Sync attestation data from the Intuition GraphQL API into the Neo4j graph.',
-    inputSchema: {
-      type: 'object' as const,
-      properties: {
-        maxPages: { type: 'number', description: 'Maximum pages to sync (omit for all)' },
-      },
-      additionalProperties: false,
-    },
-  },
 ] as const;
 
 // MCP tool call handler — routes to existing engine functions
@@ -283,11 +272,6 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
           }, null, 2),
         }],
       };
-    }
-    case 'run_sync': {
-      const maxPages = typeof args.maxPages === 'number' ? args.maxPages : undefined;
-      await runSync({ maxPages });
-      return { content: [{ type: 'text', text: 'Sync completed successfully.' }] };
     }
     default:
       throw new Error(`Unknown tool: ${name}`);
