@@ -44,6 +44,7 @@ import {
   findTrustPaths,
   TrustScore,
 } from './algorithms/index.js';
+import { TRUST_PREDICATES, DEFAULT_WEIGHTS } from './config/predicates.js';
 
 /**
  * Initialize the trust engine.
@@ -174,6 +175,11 @@ const TRUST_TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'get_predicate_config',
+    description: 'Return the current predicate list with their on-chain term IDs and default trust weights. No parameters needed.',
+    inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false },
+  },
 ] as const;
 
 // MCP tool call handler — routes to existing engine functions
@@ -270,6 +276,19 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
               agentrank: `${Math.round(result.impact.agentrankResistance * 100)}% resistance`,
             },
           }, null, 2),
+        }],
+      };
+    }
+    case 'get_predicate_config': {
+      const predicates = Object.entries(TRUST_PREDICATES).map(([name, entry]) => ({
+        name,
+        termId: entry.termId,
+        defaultWeight: entry.weight,
+      }));
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({ predicates, defaultWeights: DEFAULT_WEIGHTS }, null, 2),
         }],
       };
     }
