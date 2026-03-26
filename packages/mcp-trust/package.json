@@ -10,6 +10,7 @@
     "start:http": "PORT=3002 SERVER_MODE=http node --experimental-specifier-resolution=node dist/index.js",
     "sync": "cross-env NODE_OPTIONS=--openssl-legacy-provider tsx src/indexer/sync.ts",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest"
   },
   "keywords": [
@@ -35,6 +36,7 @@
     "cross-env": "^7.0.3",
     "tsx": "^4.7.0",
     "typescript": "^5.3.0",
+    "@vitest/coverage-v8": "^1.2.0",
     "vitest": "^1.2.0"
   }
 }
