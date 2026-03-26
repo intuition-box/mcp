@@ -121,21 +121,40 @@ export async function runSync(options: {
 
     result.nodesCreated = totalNodes;
     result.edgesCreated = totalEdges;
+    result.duration = Date.now() - startTime;
 
-    // Write sync timestamp to Neo4j
+    // Get final graph counts before writing Meta
+    const stats = await getGraphStats();
+    log('info', 'Final graph statistics', stats);
+
+    // Write sync health data to Neo4j Meta node
+    const syncStatus = result.errors.length === 0 ? 'success' : 'partial';
     const metaSession = getSession();
     try {
       await metaSession.run(
-        `MERGE (m:Meta {key: 'sync'}) SET m.lastSyncedAt = $now`,
-        { now: new Date().toISOString() }
+        `MERGE (m:Meta {key: 'sync'})
+         SET m.lastSyncedAt = $now,
+             m.nodesCreated = $nodesCreated,
+             m.edgesCreated = $edgesCreated,
+             m.errorCount = $errorCount,
+             m.durationMs = $durationMs,
+             m.totalNodes = $totalNodes,
+             m.totalEdges = $totalEdges,
+             m.status = $status`,
+        {
+          now: new Date().toISOString(),
+          nodesCreated: result.nodesCreated,
+          edgesCreated: result.edgesCreated,
+          errorCount: result.errors.length,
+          durationMs: result.duration,
+          totalNodes: stats.addressCount,
+          totalEdges: stats.attestationCount,
+          status: syncStatus,
+        }
       );
     } finally {
       await metaSession.close();
     }
-
-    // Get final stats
-    const stats = await getGraphStats();
-    log('info', 'Final graph statistics', stats);
 
   } catch (error) {
     const errMsg = `Sync failed: ${error}`;
@@ -145,7 +164,10 @@ export async function runSync(options: {
     await closeDriver();
   }
 
-  result.duration = Date.now() - startTime;
+  // Set duration if not already set (e.g., sync threw before reaching the Meta write)
+  if (result.duration === 0) {
+    result.duration = Date.now() - startTime;
+  }
 
   log('info', '='.repeat(60));
   log('info', 'Sync Complete', {

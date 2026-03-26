@@ -134,6 +134,11 @@ export async function getGraphStats(): Promise<{
   attestationCount: number;
   predicateDistribution: Record<string, number>;
   lastSyncedAt: string | null;
+  lastSyncStatus: string | null;
+  lastSyncDurationMs: number | null;
+  lastSyncNodesCreated: number | null;
+  lastSyncEdgesCreated: number | null;
+  lastSyncErrorCount: number | null;
 }> {
   const session = getSession();
 
@@ -154,7 +159,12 @@ export async function getGraphStats(): Promise<{
 
     const metaResult = await session.run(`
       OPTIONAL MATCH (m:Meta {key: 'sync'})
-      RETURN m.lastSyncedAt AS lastSyncedAt
+      RETURN m.lastSyncedAt AS lastSyncedAt,
+             m.status AS lastSyncStatus,
+             m.durationMs AS lastSyncDurationMs,
+             m.nodesCreated AS lastSyncNodesCreated,
+             m.edgesCreated AS lastSyncEdgesCreated,
+             m.errorCount AS lastSyncErrorCount
     `);
 
     const counts = countResult.records[0];
@@ -166,18 +176,41 @@ export async function getGraphStats(): Promise<{
       predicateDistribution[predicate] = count;
     }
 
-    const lastSyncedAt: string | null =
-      metaResult.records[0]?.get('lastSyncedAt') ?? null;
+    const metaRecord = metaResult.records[0];
+    const lastSyncedAt: string | null = metaRecord?.get('lastSyncedAt') ?? null;
+    const lastSyncStatus: string | null = metaRecord?.get('lastSyncStatus') ?? null;
+    const lastSyncDurationMs: number | null = extractMetaNumber(metaRecord?.get('lastSyncDurationMs'));
+    const lastSyncNodesCreated: number | null = extractMetaNumber(metaRecord?.get('lastSyncNodesCreated'));
+    const lastSyncEdgesCreated: number | null = extractMetaNumber(metaRecord?.get('lastSyncEdgesCreated'));
+    const lastSyncErrorCount: number | null = extractMetaNumber(metaRecord?.get('lastSyncErrorCount'));
 
     return {
       addressCount: counts.get('addressCount').toNumber(),
       attestationCount: counts.get('attestationCount').toNumber(),
       predicateDistribution,
       lastSyncedAt,
+      lastSyncStatus,
+      lastSyncDurationMs,
+      lastSyncNodesCreated,
+      lastSyncEdgesCreated,
+      lastSyncErrorCount,
     };
   } finally {
     await session.close();
   }
+}
+
+/**
+ * Extract a numeric value from a Neo4j Meta node property.
+ * Returns null if the value is null/undefined.
+ */
+function extractMetaNumber(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'object' && value !== null && 'toNumber' in value) {
+    return (value as { toNumber: () => number }).toNumber();
+  }
+  if (typeof value === 'number') return value;
+  return null;
 }
 
 /**

@@ -130,6 +130,9 @@ const TRUST_TOOLS = [
       properties: {
         address: { type: 'string', description: 'The address to evaluate' },
         fromAddress: { type: 'string', description: 'Optional source address for personalized transitive trust perspective' },
+        eigentrustWeight: { type: 'number', description: 'Override EigenTrust weight in composite (0-1, default 0.4)' },
+        agentRankWeight: { type: 'number', description: 'Override AgentRank weight in composite (0-1, default 0.3)' },
+        transitiveTrustWeight: { type: 'number', description: 'Override transitive trust weight in composite (0-1, default 0.3)' },
       },
       required: ['address'],
       additionalProperties: false,
@@ -159,6 +162,7 @@ const TRUST_TOOLS = [
         fromAddress: { type: 'string', description: 'Source address' },
         toAddress: { type: 'string', description: 'Target address' },
         maxHops: { type: 'number', description: 'Maximum path length (default 3)' },
+        predicateWeights: { type: 'object', description: 'Optional predicate weight overrides, e.g. {"trusts": 1.0, "follow": 0.5}' },
       },
       required: ['fromAddress', 'toAddress'],
       additionalProperties: false,
@@ -184,6 +188,11 @@ const TRUST_TOOLS = [
   {
     name: 'get_sync_status',
     description: 'Returns the current auto-sync cron job status including whether it is running, the next scheduled run time, the last run time, and whether the last run succeeded.',
+    inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'get_sync_health',
+    description: 'Returns detailed sync health metrics for the Neo4j graph including last sync status, duration, nodes/edges created, error count, and overall graph size.',
     inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false },
   },
 ] as const;
@@ -230,7 +239,13 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
     case 'compute_composite_score': {
       const address = args.address as string;
       const fromAddress = args.fromAddress as string | undefined;
-      const result = await computeCompositeScore(address, fromAddress);
+      const etW = typeof args.eigentrustWeight === 'number' ? args.eigentrustWeight : undefined;
+      const arW = typeof args.agentRankWeight === 'number' ? args.agentRankWeight : undefined;
+      const ttW = typeof args.transitiveTrustWeight === 'number' ? args.transitiveTrustWeight : undefined;
+      const config = (etW !== undefined || arW !== undefined || ttW !== undefined)
+        ? { weights: { eigentrust: etW ?? 0.4, agentrank: arW ?? 0.3, transitiveTrust: ttW ?? 0.3 } }
+        : undefined;
+      const result = await computeCompositeScore(address, fromAddress, config);
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     }
     case 'compute_personalized_trust': {
@@ -244,7 +259,10 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
     }
     case 'find_trust_paths': {
       const maxHops = typeof args.maxHops === 'number' ? args.maxHops : 3;
-      const result = await findTrustPaths(args.fromAddress as string, args.toAddress as string, maxHops);
+      const predicateWeights = (args.predicateWeights && typeof args.predicateWeights === 'object' && !Array.isArray(args.predicateWeights))
+        ? args.predicateWeights as Record<string, number>
+        : undefined;
+      const result = await findTrustPaths(args.fromAddress as string, args.toAddress as string, maxHops, predicateWeights);
       return {
         content: [{
           type: 'text',
@@ -305,6 +323,25 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
         content: [{
           type: 'text',
           text: JSON.stringify(status, null, 2),
+        }],
+      };
+    }
+    case 'get_sync_health': {
+      const stats = await getGraphStats();
+      const health = {
+        lastSyncedAt: stats.lastSyncedAt,
+        lastSyncStatus: stats.lastSyncStatus,
+        lastSyncDurationMs: stats.lastSyncDurationMs,
+        lastSyncNodesCreated: stats.lastSyncNodesCreated,
+        lastSyncEdgesCreated: stats.lastSyncEdgesCreated,
+        lastSyncErrorCount: stats.lastSyncErrorCount,
+        addressCount: stats.addressCount,
+        attestationCount: stats.attestationCount,
+      };
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(health, null, 2),
         }],
       };
     }

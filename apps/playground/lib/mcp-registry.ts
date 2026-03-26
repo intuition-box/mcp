@@ -128,6 +128,12 @@ const registry: readonly McpEntry[] = Object.freeze([
           'Returns the current auto-sync cron job status -- whether it is running, ' +
           'next scheduled run, last run time, and whether the last run succeeded.',
       },
+      {
+        name: 'get_sync_health',
+        description:
+          'Returns detailed sync health metrics for the Neo4j graph including last sync status, ' +
+          'duration, nodes/edges created, error count, and overall graph size.',
+      },
     ]),
     serverUrl: process.env.NEXT_PUBLIC_MCP_TRUST_URL || 'http://localhost:3002',
   }),

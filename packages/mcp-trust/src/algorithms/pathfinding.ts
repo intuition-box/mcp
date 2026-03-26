@@ -42,7 +42,8 @@ const STAKE_LOG_BASE = 1e18;
 export async function findTrustPaths(
   fromAddress: string,
   toAddress: string,
-  maxHops: number = DEFAULT_MAX_HOPS
+  maxHops: number = DEFAULT_MAX_HOPS,
+  predicateWeights?: Record<string, number>,
 ): Promise<PathFindingResult> {
   const session = getSession();
   const normalizedFrom = fromAddress.toLowerCase();
@@ -83,7 +84,7 @@ export async function findTrustPaths(
     const sortedPaths = paths
       .map(path => ({
         path,
-        trust: calculatePathTrust(path),
+        trust: calculatePathTrust(path, DEFAULT_DECAY_FACTOR, predicateWeights),
       }))
       .sort((a, b) => b.trust - a.trust)
       .map(item => item.path);
@@ -201,11 +202,13 @@ export async function findOutgoingTrustPaths(
  *
  * @param path - The trust path to evaluate
  * @param decayFactor - Decay multiplier per hop (default: 0.6)
+ * @param predicateWeights - Optional custom predicate weight overrides
  * @returns Trust value between 0 and 1
  */
 export function calculatePathTrust(
   path: TrustPath,
-  decayFactor: number = DEFAULT_DECAY_FACTOR
+  decayFactor: number = DEFAULT_DECAY_FACTOR,
+  predicateWeights?: Record<string, number>,
 ): number {
   if (path.predicates.length === 0 || path.stakes.length === 0) {
     return 0;
@@ -220,8 +223,8 @@ export function calculatePathTrust(
     // Normalize stake using log scale
     const stakeWeight = normalizeStake(stake);
 
-    // Get predicate weight
-    const predicateWeight = getPredicateWeight(predicate);
+    // Get predicate weight (custom override falls back to constants.ts default)
+    const predicateWeight = predicateWeights?.[predicate] ?? getPredicateWeight(predicate);
 
     // Apply decay based on hop index (0-indexed)
     const hopDecay = Math.pow(decayFactor, i);
