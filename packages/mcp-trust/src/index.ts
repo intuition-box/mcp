@@ -45,6 +45,7 @@ import {
   TrustScore,
 } from './algorithms/index.js';
 import { TRUST_PREDICATES, DEFAULT_WEIGHTS } from './config/predicates.js';
+import { startCronSync, stopCronSync, getSyncStatus } from './cron.js';
 
 /**
  * Initialize the trust engine.
@@ -180,6 +181,11 @@ const TRUST_TOOLS = [
     description: 'Return the current predicate list with their on-chain term IDs and default trust weights. No parameters needed.',
     inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false },
   },
+  {
+    name: 'get_sync_status',
+    description: 'Returns the current auto-sync cron job status including whether it is running, the next scheduled run time, the last run time, and whether the last run succeeded.',
+    inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false },
+  },
 ] as const;
 
 // MCP tool call handler — routes to existing engine functions
@@ -289,6 +295,16 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
         content: [{
           type: 'text',
           text: JSON.stringify({ predicates, defaultWeights: DEFAULT_WEIGHTS }, null, 2),
+        }],
+      };
+    }
+    case 'get_sync_status': {
+      // lastSyncedAt timestamp is already available via get_graph_stats
+      const status = getSyncStatus();
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(status, null, 2),
         }],
       };
     }
@@ -489,13 +505,20 @@ async function runHttpServer(): Promise<void> {
   startSessionCleanup();
 
   // Attempt Neo4j connection in background — never kills the server
-  initialize().catch((error) => {
-    log('warn', 'Background initialization failed', { error: String(error) });
-  });
+  initialize()
+    .then(() => {
+      if (process.env.ENABLE_SYNC_CRON === 'true') {
+        startCronSync();
+      }
+    })
+    .catch((error) => {
+      log('warn', 'Background initialization failed', { error: String(error) });
+    });
 
   // Graceful shutdown
   process.on('SIGTERM', () => {
     log('info', 'SIGTERM received, shutting down gracefully');
+    stopCronSync();
     httpServer.close(async () => {
       await shutdown();
       log('info', 'Server closed');
