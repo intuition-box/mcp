@@ -134,6 +134,12 @@ const registry: readonly McpEntry[] = Object.freeze([
           'Returns detailed sync health metrics for the Neo4j graph including last sync status, ' +
           'duration, nodes/edges created, error count, and overall graph size.',
       },
+      {
+        name: 'get_lens_registry',
+        description:
+          'Returns all available trust lenses. Each lens defines a filtered view of the ' +
+          'attestation graph by predicate type, stake threshold, recency, or address scope.',
+      },
     ]),
     serverUrl: process.env.NEXT_PUBLIC_MCP_TRUST_URL || 'http://localhost:3002',
   }),

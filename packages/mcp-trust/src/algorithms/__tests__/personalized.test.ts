@@ -3,7 +3,6 @@ import {
   computePersonalizedTrust,
   computePersonalizedTrustNetwork,
   aggregatePathTrust,
-  computeTrustWithDecay,
   getDirectTrust,
 } from '../personalized.js';
 import type { TrustPath, PersonalizedTrustQuery } from '../types.js';

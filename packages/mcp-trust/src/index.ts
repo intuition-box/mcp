@@ -46,6 +46,7 @@ import {
 } from './algorithms/index.js';
 import { TRUST_PREDICATES, DEFAULT_WEIGHTS } from './config/predicates.js';
 import { startCronSync, stopCronSync, getSyncStatus } from './cron.js';
+import { getLensRegistry } from './lenses/index.js';
 
 /**
  * Initialize the trust engine.
@@ -195,6 +196,11 @@ const TRUST_TOOLS = [
     description: 'Returns detailed sync health metrics for the Neo4j graph including last sync status, duration, nodes/edges created, error count, and overall graph size.',
     inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false },
   },
+  {
+    name: 'get_lens_registry',
+    description: 'Returns all available trust lenses. Each lens defines a filtered view of the attestation graph by predicate type, stake threshold, recency, or address scope.',
+    inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false },
+  },
 ] as const;
 
 // MCP tool call handler — routes to existing engine functions
@@ -342,6 +348,15 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
         content: [{
           type: 'text',
           text: JSON.stringify(health, null, 2),
+        }],
+      };
+    }
+    case 'get_lens_registry': {
+      const lenses = getLensRegistry();
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({ lenses }, null, 2),
         }],
       };
     }

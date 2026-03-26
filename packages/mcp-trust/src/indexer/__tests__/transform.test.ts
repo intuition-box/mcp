@@ -6,7 +6,7 @@ import {
   calculateStake,
   extractAddressNode,
 } from '../transform.js';
-import type { IntuitionTriple, AddressNode } from '../../types/index.js';
+import type { IntuitionTriple } from '../../types/index.js';
 
 vi.mock('../../utils/logger.js', () => ({
   logger: {
