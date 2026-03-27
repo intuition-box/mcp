@@ -1,25 +1,88 @@
 # Trust Scoring Algorithms -- Technical Specification
 
-This document describes every trust-scoring algorithm in `mcp-trust`, how the
-graph indexer feeds data into Neo4j, and how the MCP tools expose these
-algorithms to consumers.
+Intuition Protocol's trust infrastructure for computing reputation, influence,
+and sybil resistance over on-chain attestation graphs. These algorithms power
+the MCP tools that AI agents and developers use to query, score, and reason
+about trust relationships in the Intuition ecosystem.
+
+**Quick Jump:**
+[EigenTrust](#1-eigentrust) | [AgentRank](#2-agentrank) | [Composite Scoring](#3-composite-scoring-engine) | [Transitive Trust](#4-multi-hop-transitive-trust) | [Sybil Resistance](#5-sybil-resistance) | [Graph Indexer](#6-graph-indexer) | [Predicate Weights](#7-predicate-weights)
 
 ---
 
-## Quick Reference: MCP Tools
+## Table of Contents
 
-| Tool | Algorithm / Data Source | Required Params | Optional Params |
-|------|------------------------|-----------------|-----------------|
-| `get_graph_stats` | `getGraphStats()` | -- | -- |
-| `get_sync_health` | `getGraphStats()` | -- | -- |
-| `get_sync_status` | `getSyncStatus()` (cron state) | -- | -- |
-| `get_predicate_config` | `TRUST_PREDICATES`, `DEFAULT_WEIGHTS` | -- | -- |
-| `compute_eigentrust` | `computeEigenTrust()` | -- | -- |
-| `compute_agentrank` | `computeAgentRank()` | -- | `topN` |
-| `compute_composite_score` | `computeCompositeScore()` | `address` | `fromAddress`, weight overrides |
-| `compute_personalized_trust` | `computePersonalizedTrust()` | `fromAddress`, `toAddress` | `maxHops`, `minStake` |
-| `find_trust_paths` | `findTrustPaths()` | `fromAddress`, `toAddress` | `maxHops`, `predicateWeights` |
-| `simulate_sybil_attack` | `simulateSybilAttack()` | -- | `numSybilNodes`, `targetAddress` |
+- [MCP Tools Quick Reference](#mcp-tools-quick-reference)
+- [1. EigenTrust](#1-eigentrust)
+  - [Overview](#overview)
+  - [Input](#input)
+  - [Algorithm](#algorithm)
+  - [Output](#output)
+  - [Key Parameters](#key-parameters)
+  - [Complexity](#complexity)
+- [2. AgentRank](#2-agentrank)
+  - [Overview](#overview-1)
+  - [Algorithm](#algorithm-1)
+  - [Input](#input-1)
+  - [Output](#output-1)
+  - [Influence Metrics](#influence-metrics)
+  - [Key Parameters](#key-parameters-1)
+- [3. Composite Scoring Engine](#3-composite-scoring-engine)
+  - [Overview](#overview-2)
+  - [Default Weights](#default-weights)
+  - [Weight Redistribution](#weight-redistribution)
+  - [Normalization](#normalization)
+  - [Confidence Metric](#confidence-metric)
+  - [Caching](#caching)
+  - [Batch API](#batch-api)
+  - [Output](#output-2)
+- [4. Multi-Hop Transitive Trust](#4-multi-hop-transitive-trust)
+  - [Overview](#overview-3)
+  - [Path Traversal](#path-traversal)
+  - [Per-Hop Trust Formula](#per-hop-trust-formula)
+  - [Default Parameters](#default-parameters)
+  - [Path Aggregation](#path-aggregation)
+  - [Personalized PageRank](#personalized-pagerank)
+  - [Direct Trust Shortcut](#direct-trust-shortcut)
+  - [Available Operations](#available-operations)
+- [5. Sybil Resistance](#5-sybil-resistance)
+  - [Overview](#overview-4)
+  - [Simulation Process](#simulation-process)
+  - [Resistance Score](#resistance-score)
+  - [Default Configuration](#default-configuration)
+  - [Output](#output-3)
+- [6. Graph Indexer](#6-graph-indexer)
+  - [Overview](#overview-5)
+  - [Sync Pipeline](#sync-pipeline)
+  - [Pagination Strategy](#pagination-strategy)
+  - [Transform Pipeline](#transform-pipeline)
+  - [Neo4j Schema](#neo4j-schema)
+  - [Sync Health Tracking](#sync-health-tracking)
+  - [Auto-Sync Cron Job](#auto-sync-cron-job)
+  - [Sync Result](#sync-result)
+- [7. Predicate Weights](#7-predicate-weights)
+  - [Predicate Registry](#predicate-registry)
+  - [Weight Resolution](#weight-resolution)
+  - [Custom Overrides](#custom-overrides)
+  - [Design Rationale](#design-rationale)
+
+---
+
+## MCP Tools Quick Reference
+
+| Tool | Description | Required Params | Optional Params |
+|------|-------------|-----------------|-----------------|
+| `get_graph_stats` | Graph statistics (node/edge counts, labels) | -- | -- |
+| `get_sync_health` | Sync health metrics (status, duration, errors) | -- | -- |
+| `get_sync_status` | Auto-sync cron job status | -- | -- |
+| `get_predicate_config` | Predicate registry with term IDs and weights | -- | -- |
+| `get_lens_registry` | Available trust lenses (filtered graph views) | -- | -- |
+| `compute_eigentrust` | Global EigenTrust scores for all addresses | -- | -- |
+| `compute_agentrank` | Global AgentRank influence scores | -- | `topN` |
+| `compute_composite_score` | Composite score combining all trust signals | `address` | `fromAddress`, weight overrides |
+| `compute_personalized_trust` | Personalized trust between two addresses | `fromAddress`, `toAddress` | `maxHops`, `minStake` |
+| `find_trust_paths` | All trust paths between two addresses | `fromAddress`, `toAddress` | `maxHops`, `predicateWeights` |
+| `simulate_sybil_attack` | Sybil resistance simulation and scoring | -- | `numSybilNodes`, `targetAddress` |
 
 ---
 
@@ -34,11 +97,11 @@ a normalized trust matrix through iterative power iteration.
 ### Input
 
 The attestation graph stored in Neo4j:
-- **Nodes**: `Address` entities with `id`, `label`, `total_stake`, `attestation_count`
-- **Edges**: `ATTESTS` relationships with `stakeAmount`, `predicate`, `tripleId`, `timestamp`
+- **Nodes**: Address entities with id, label, total stake, and attestation count
+- **Edges**: ATTESTS relationships with stake amount, predicate type, triple ID, and timestamp
 
-Graph data is fetched in a single Cypher query by `fetchGraphData()`, which returns
-all addresses and all `ATTESTS` edges.
+All addresses and attestation edges are fetched in a single pass before
+computation begins.
 
 ### Algorithm
 
@@ -56,7 +119,7 @@ t'[i] = (1 - alpha) * p[i]  +  alpha * SUM_j( C[j][i] * t[j] )
 
 Where:
 - `alpha = 1 - pretrustWeight` (default `1 - 0.1 = 0.9`)
-- `p[i]` is the pretrust vector (uniform distribution in base implementation)
+- `p[i]` is the pretrust vector (uniform distribution in the base implementation)
 - `C[j][i]` is the normalized transition matrix entry
 - Dangling node contribution is added uniformly: `danglingSum / n`
 
@@ -66,12 +129,11 @@ Where:
 
 ### Output
 
-`TrustComputationResult`:
-- `scores`: `TrustScore[]` -- sorted descending by score, each with:
-  - `address`, `score` (0-1), `confidence` (0-1), `pathCount`, `sources`
-- `iterations`: number of iterations until convergence
-- `converged`: boolean
-- `computationTimeMs`: wall-clock time
+- `scores` -- sorted descending by score, each entry containing:
+  address, score (0-1), confidence (0-1), path count, and source addresses
+- `iterations` -- number of iterations until convergence
+- `converged` -- whether the algorithm converged within the iteration limit
+- `computationTimeMs` -- wall-clock computation time
 
 Confidence is calculated on a logarithmic scale based on incoming attestation count:
 `confidence = min(1, log2(incomingCount + 1) / log2(n))`.
@@ -90,6 +152,8 @@ Confidence is calculated on a logarithmic scale based on incoming attestation co
 - **Time**: O(iterations * edges) per iteration -- matrix-vector multiply
 - **Space**: O(nodes + edges) for the transition matrix and score vectors
 - Typical convergence within 15-30 iterations on real attestation graphs
+
+[Back to top](#table-of-contents)
 
 ---
 
@@ -118,20 +182,19 @@ Where:
 
 ### Input
 
-Same graph data as EigenTrust. `buildWeightedAdjacency()` constructs:
-- `inLinks`: for each node, a map of incoming neighbors to their normalized edge weights
-- `outWeights`: total outgoing weight per node
+Same attestation graph as EigenTrust. The weighted adjacency is constructed as:
+- `inLinks` -- for each node, a map of incoming neighbors to their normalized edge weights
+- `outWeights` -- total outgoing weight per node
 
-Optional `stakeWeighted` flag (default `true`). When false, only predicate weights
-are used, ignoring stake amounts.
+An optional `stakeWeighted` flag (default `true`) controls whether stake amounts
+are factored into edge weights. When false, only predicate weights are used.
 
 ### Output
 
-`AgentRankResult`:
-- `ranks`: `Map<string, number>` -- address to influence score
+- `ranks` -- map of address to influence score
 - `iterations`, `converged`, `computationTimeMs`
-- `topAgents`: `AgentSummary[]` -- top N agents with in/out degree
-- `influenceMetrics`: network-level statistics
+- `topAgents` -- top N agents with in-degree and out-degree
+- `influenceMetrics` -- network-level distribution statistics
 
 ### Influence Metrics
 
@@ -154,14 +217,16 @@ Computed over the final rank distribution:
 | `minRank` | 0.001 | Floor preventing zero-rank nodes |
 | `stakeWeighted` | true | Whether to incorporate stake amounts |
 
+[Back to top](#table-of-contents)
+
 ---
 
 ## 3. Composite Scoring Engine
 
 ### Overview
 
-The primary consumer-facing module. Combines three independent signals into a
-single 0-100 score per address:
+The primary consumer-facing scoring module. Combines three independent signals
+into a single 0-100 score per address:
 
 1. **EigenTrust** -- global sybil-resistant trust
 2. **AgentRank** -- structural influence
@@ -180,8 +245,8 @@ and `transitiveTrustWeight` parameters on the `compute_composite_score` tool.
 
 ### Weight Redistribution
 
-When `fromAddress` is omitted, transitive trust cannot be computed. The
-`resolveWeights()` function redistributes its weight proportionally:
+When `fromAddress` is omitted, transitive trust cannot be computed. Its weight
+is redistributed proportionally to the remaining components:
 
 ```
 redistributedEigentrust = eigentrust / (eigentrust + agentrank)
@@ -189,7 +254,7 @@ redistributedAgentrank  = agentrank  / (eigentrust + agentrank)
 transitiveTrust         = 0
 ```
 
-Edge case: if both `eigentrust + agentrank <= 0`, falls back to 0.5/0.5.
+Edge case: if both `eigentrust + agentrank <= 0`, falls back to 0.5 / 0.5.
 
 ### Normalization
 
@@ -206,7 +271,7 @@ compositeScore = clamp(rawComposite * 100, 0, 100)
 
 ### Confidence Metric
 
-Measures data availability and signal strength (0-1):
+Measures data availability and signal strength on a 0-1 scale:
 
 ```
 availabilityFactor = signalsPresent / totalExpectedSignals
@@ -214,34 +279,32 @@ strengthFactor     = mean( min(1, score * 1000) for each nonzero signal )
 confidence         = 0.6 * availabilityFactor + 0.4 * strengthFactor
 ```
 
-EigenTrust and AgentRank scores are scaled by 1000x before clamping because
-raw scores are typically very small (e.g. 0.003). Transitive trust scores
-are used directly (already on a 0-1 scale).
+EigenTrust and AgentRank raw scores are scaled by 1000x before clamping because
+they are typically very small (e.g. 0.003). Transitive trust scores are used
+directly since they are already on a 0-1 scale.
 
 ### Caching
 
 Global computations (EigenTrust + AgentRank) are cached with a configurable
-TTL (default 300,000ms / 5 minutes). Per-address lookups against cached data
-are O(1). Cache is shared across calls within the same process.
+TTL (default 5 minutes). Per-address lookups against cached data are O(1).
+Cache is shared across calls within the same process.
 
-- `cacheResults`: boolean (default `true`)
-- `cacheTTL`: milliseconds (default `300000`)
-- `clearScoreCache()`: forces recomputation on next call
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `cacheResults` | `true` | Whether to cache global algorithm results |
+| `cacheTTL` | 300,000 ms | Time-to-live for cached results |
 
 ### Batch API
 
-`batchCompositeScores(addresses, fromAddress?, config?)` runs EigenTrust and
-AgentRank once, then resolves all addresses in O(1) per address. If
-`fromAddress` is provided, transitive trust is computed sequentially for each
-target via `batchTransitiveTrust()` to avoid overloading Neo4j with concurrent
-path queries.
+The batch endpoint runs EigenTrust and AgentRank once, then resolves all
+requested addresses in O(1) per address. When `fromAddress` is provided,
+transitive trust is computed sequentially for each target to avoid overloading
+the database with concurrent path queries.
 
-Self-loop optimization: when `fromAddress === targetAddress`, returns `{score: 1, paths: 0}`
-without running a path query.
+Self-loop optimization: when `fromAddress` equals the target address, the
+engine returns `{score: 1, paths: 0}` without running a path query.
 
 ### Output
-
-`CompositeScoreResult`:
 
 ```
 {
@@ -261,6 +324,8 @@ without running a path query.
 }
 ```
 
+[Back to top](#table-of-contents)
+
 ---
 
 ## 4. Multi-Hop Transitive Trust
@@ -268,19 +333,20 @@ without running a path query.
 ### Overview
 
 Computes personalized trust between two specific addresses by traversing
-attestation paths in the Neo4j graph. This is the only algorithm that takes
-a source/target pair rather than computing over the entire network.
+attestation paths in the graph. This is the only algorithm that takes a
+source/target pair rather than computing over the entire network.
 
 ### Path Traversal
 
-Uses Neo4j variable-length Cypher pattern matching:
+Uses variable-length pattern matching to discover all attestation paths
+between a source and target address:
 
 ```cypher
 MATCH path = (source:Address {id: $from})-[:ATTESTS*1..<maxHops>]->(target:Address {id: $to})
 ```
 
 The hop range is clamped to `[1, 10]` regardless of input. Results are limited
-to 1,000 paths maximum (`MAX_PATHS_LIMIT`).
+to 1,000 paths maximum.
 
 ### Per-Hop Trust Formula
 
@@ -312,8 +378,8 @@ pathTrust = PRODUCT( hopTrust[i] for i in 0..hops-1 )
 
 ### Path Aggregation
 
-`aggregatePathTrust()` combines multiple paths into a single score using
-weighted averaging. Shorter paths receive higher weight:
+Multiple paths are combined into a single score using weighted averaging.
+Shorter paths receive higher weight:
 
 ```
 weight[path] = 1.5 ^ (maxHops - pathLength)
@@ -331,8 +397,9 @@ Confidence is computed from two factors (60/40 blend):
 
 ### Personalized PageRank
 
-`computePersonalizedTrustNetwork()` runs a full personalized PageRank from
-a source address, with teleportation probability back to the source:
+A full personalized PageRank can be run from a source address, with
+teleportation probability back to the source. This scores all reachable
+addresses relative to the source.
 
 | Parameter | Value |
 |-----------|-------|
@@ -342,27 +409,27 @@ a source address, with teleportation probability back to the source:
 
 ### Direct Trust Shortcut
 
-`getDirectTrust()` checks for a single-hop attestation and uses sigmoid
-normalization:
+For single-hop queries, a fast path checks for a direct attestation and
+uses sigmoid normalization:
 
 ```
 normalizedStake = 2 / (1 + e^(-stake / 1e15)) - 1
 ```
 
-### Exported Functions
+### Available Operations
 
-| Function | Purpose |
-|----------|---------|
-| `findTrustPaths(from, to, maxHops, predicateWeights)` | Find all paths between two addresses |
-| `findOutgoingTrustPaths(from, maxHops)` | Find all reachable addresses from a source |
-| `calculatePathTrust(path, decayFactor, predicateWeights)` | Calculate trust for a single path |
-| `normalizeStake(stake)` | Log-scale stake normalization |
-| `getPathsFromCypherResult(records)` | Transform Neo4j records to TrustPath objects |
-| `computePersonalizedTrust(query)` | Personalized trust between two addresses |
-| `computePersonalizedTrustNetwork(from, maxHops)` | Personalized PageRank from a source |
-| `aggregatePathTrust(paths, maxHops)` | Weighted path aggregation |
-| `computeTrustWithDecay(from, to, maxHops)` | 70% strongest path + 30% aggregate blend |
-| `getDirectTrust(from, to)` | Single-hop trust check |
+| Operation | Purpose |
+|-----------|---------|
+| Find trust paths | All paths between two addresses, ranked by strength |
+| Find outgoing paths | All reachable addresses from a source |
+| Calculate path trust | Trust value for a single path |
+| Normalize stake | Log-scale stake normalization to [0, 1] |
+| Personalized trust | Aggregated trust from one address to another |
+| Personalized network | Personalized PageRank from a source to all reachable nodes |
+| Trust with decay | 70% strongest path + 30% aggregate blend |
+| Direct trust | Single-hop attestation check |
+
+[Back to top](#table-of-contents)
 
 ---
 
@@ -370,27 +437,25 @@ normalizedStake = 2 / (1 + e^(-stake / 1e15)) - 1
 
 ### Overview
 
-`simulateSybilAttack()` measures how well the trust algorithms resist
-coordinated fake-identity attacks. It runs a before/after experiment on
-the live graph.
+The sybil simulation measures how well EigenTrust and AgentRank resist
+coordinated fake-identity attacks. It runs a controlled before/after
+experiment on the live graph with guaranteed cleanup.
 
 ### Simulation Process
 
 1. **Baseline capture** -- run EigenTrust and AgentRank on the clean graph.
 2. **Inject sybil nodes** -- create `numSybilNodes` fake addresses with
-   deterministic IDs: `0xsybil<4-hex-index><34-zeros>`.
-3. **Create collusion edges** -- add `numCollusionEdges` (default: numSybilNodes * 4)
-   random `ATTESTS` relationships between sybil pairs. Each edge carries
-   a configurable stake (default 0.01 ETH). Self-loops and duplicates are avoided.
+   deterministic, identifiable IDs.
+3. **Create collusion edges** -- add random attestation relationships between
+   sybil pairs. Each edge carries a configurable stake (default 0.01 ETH).
+   Self-loops and duplicates are avoided.
 4. **Attack capture** -- rerun EigenTrust and AgentRank on the contaminated graph.
 5. **Cleanup** -- remove all sybil nodes and their relationships (guaranteed
-   by try/finally).
+   via try/finally).
 6. **Calculate resistance** -- compare baseline and attack scores for
    legitimate addresses only.
 
 ### Resistance Score
-
-Computed by `calculateResistance()`:
 
 ```
 avgAbsoluteChange = mean( |attacked[i] - baseline[i]| )  for legitimate addresses only
@@ -401,12 +466,12 @@ resistance        = clamp(1 - avgAbsoluteChange / avgBaselineScore, 0, 1)
 | Score | Meaning |
 |-------|---------|
 | 1.0 | No impact -- scores unchanged |
-| 0.7-0.9 | Good resistance -- minor perturbation |
-| 0.3-0.6 | Moderate vulnerability |
+| 0.7 - 0.9 | Good resistance -- minor perturbation |
+| 0.3 - 0.6 | Moderate vulnerability |
 | 0.0 | Complete compromise -- scores fully manipulated |
 
-The function also returns `maxChange` (worst single-address deviation) and
-`avgChange` (mean absolute change).
+The result also includes `maxChange` (worst single-address deviation) and
+`avgChange` (mean absolute change across all legitimate addresses).
 
 ### Default Configuration
 
@@ -415,15 +480,16 @@ The function also returns `maxChange` (worst single-address deviation) and
 | `numSybilNodes` | 50 | Fake identities to inject |
 | `numCollusionEdges` | 200 | Random inter-sybil attestations |
 | `sybilStake` | 0.01 | ETH stake per collusion edge |
-| `targetAddress` | undefined | Optional specific target to attempt boosting |
+| `targetAddress` | -- | Optional specific address to attempt boosting |
 
 ### Output
 
-`SybilSimulationResult`:
-- `resistanceScore`: 0-1 (higher = more resistant)
-- `maxChange`, `avgChange`: impact metrics
-- `baselineScores`, `attackedScores`: full score maps for analysis
-- `sybilCount`, `collusionEdges`: simulation parameters
+- `resistanceScore` (0-1, higher = more resistant)
+- `maxChange`, `avgChange` -- impact metrics
+- `baselineScores`, `attackedScores` -- full score maps for analysis
+- `sybilCount`, `collusionEdges` -- simulation parameters used
+
+[Back to top](#table-of-contents)
 
 ---
 
@@ -438,46 +504,47 @@ and sync health tracking.
 ### Sync Pipeline
 
 ```
-1. loadConfig()          -- Load Neo4j URI, GraphQL endpoint, batch size
-2. initializeDriver()    -- Create Neo4j driver connection
-3. verifyConnection()    -- Confirm Neo4j is reachable
-4. setupSchema()         -- Create constraints and indexes (idempotent)
-5. initializeGraphQLClient()
-6. [optional] clearGraph()  -- If clearFirst is true
-7. fetchAllTriples()     -- Async generator yielding batches of IntuitionTriple[]
-8. transformTriples()    -- Convert triples to AddressNode[] + AttestationEdge[]
-9. upsertAddresses()     -- MERGE nodes in batches
-10. upsertAttestations() -- MERGE edges in batches
-11. Write Meta node      -- Sync health metadata
-12. closeDriver()
+ 1. Load configuration        (Neo4j URI, GraphQL endpoint, batch size)
+ 2. Initialize Neo4j driver
+ 3. Verify connection
+ 4. Create schema             (constraints and indexes, idempotent)
+ 5. Initialize GraphQL client
+ 6. [optional] Clear graph    (if clearFirst is true)
+ 7. Fetch triples             (async generator yielding batches)
+ 8. Transform triples         (convert to address nodes + attestation edges)
+ 9. Upsert addresses          (MERGE nodes in batches)
+10. Upsert attestations       (MERGE edges in batches)
+11. Write sync metadata       (Meta node with health data)
+12. Close driver
 ```
 
 ### Pagination Strategy
 
-`fetchAllTriples()` is an async generator that yields pages of triples from
-the Intuition GraphQL API. Each page fetches up to `pageSize` triples (default 1000).
+Triples are fetched through an async generator that yields pages from the
+Intuition GraphQL API. Each page fetches up to `pageSize` triples (default 1000).
 The generator continues until all triples are fetched or `maxPages` is reached.
 
-Each yielded batch is processed independently: transformed, then upserted to
+Each yielded batch is processed independently -- transformed, then upserted to
 Neo4j before the next batch is fetched. This keeps memory usage bounded
 regardless of total triple count.
 
 ### Transform Pipeline
 
-For each `IntuitionTriple`:
+For each attestation triple:
 
-1. **Validate** creator address (`isValidAddress` -- `0x` + 40 hex chars)
-2. **Extract creator node** -- lowercase address, label from creator object
-   or truncated address (`0xaaaaaaaa...`)
-3. **Extract subject node** -- from `subject.wallet_id` if valid
-4. **Calculate stake** -- `triple_vault.total_assets / 1e18` (wei to ETH)
-5. **Create edge** -- `creator -> subject` with predicate label, stake, triple ID, timestamp
+1. **Validate** creator address (must match `0x` + 40 hex characters)
+2. **Extract creator node** -- lowercase address, label from creator metadata
+   or truncated address fallback
+3. **Extract subject node** -- from the subject's wallet address if valid
+4. **Calculate stake** -- `total_assets / 1e18` (wei to ETH conversion)
+5. **Create edge** -- creator to subject with predicate label, stake, triple ID,
+   and timestamp
 6. **Deduplicate** -- nodes in the same batch are merged, accumulating
-   `total_stake` and `attestation_count`
+   total stake and attestation count
 
 ### Neo4j Schema
 
-Created by `setupSchema()` (idempotent with IF NOT EXISTS):
+Created idempotently on each sync:
 
 | Type | Name | Target |
 |------|------|--------|
@@ -487,26 +554,14 @@ Created by `setupSchema()` (idempotent with IF NOT EXISTS):
 | Index | `attests_timestamp_index` | `ATTESTS.timestamp` |
 | Index | `attests_triple_id_index` | `ATTESTS.tripleId` |
 
-### Meta Node -- Sync Health Tracking
+### Sync Health Tracking
 
-After each sync, a `Meta` node is written (or updated) in Neo4j:
-
-```cypher
-MERGE (m:Meta {key: 'sync'})
-SET m.lastSyncedAt    = $now,
-    m.nodesCreated    = $nodesCreated,
-    m.edgesCreated    = $edgesCreated,
-    m.errorCount      = $errorCount,
-    m.durationMs      = $durationMs,
-    m.totalNodes      = $totalNodes,
-    m.totalEdges      = $totalEdges,
-    m.status          = $status
-```
+After each sync, a Meta node is written (or updated) in Neo4j with health data:
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `lastSyncedAt` | ISO 8601 string | Timestamp of sync completion |
-| `status` | `"success"` or `"partial"` | `partial` if any batch errors occurred |
+| `status` | `"success"` or `"partial"` | `"partial"` if any batch errors occurred |
 | `durationMs` | number | Total wall-clock time |
 | `nodesCreated` | number | Addresses upserted in this sync |
 | `edgesCreated` | number | Attestations upserted in this sync |
@@ -514,7 +569,7 @@ SET m.lastSyncedAt    = $now,
 | `totalNodes` | number | Total addresses in graph post-sync |
 | `totalEdges` | number | Total attestations in graph post-sync |
 
-These fields are exposed through `get_graph_stats` and `get_sync_health` tools.
+These fields are exposed through the `get_graph_stats` and `get_sync_health` tools.
 
 ### Auto-Sync Cron Job
 
@@ -534,23 +589,25 @@ Preset values for `SYNC_INTERVAL_PRESET`:
 | `"daily"` | `0 0 * * *` | Midnight daily |
 | `"twice-daily"` | `0 0,12 * * *` | Midnight and noon |
 
-The cron job has `noOverlap: true` -- if a sync is still running when the
-next scheduled run fires, the second run is skipped.
+The cron job prevents overlap -- if a sync is still running when the next
+scheduled run fires, the second run is skipped.
 
-`get_sync_status` returns: `isRunning`, `nextRun`, `lastRunSuccess`.
+The `get_sync_status` tool returns: `isRunning`, `nextRun`, `lastRunSuccess`.
 
-### SyncResult
+### Sync Result
 
-```typescript
+```
 {
   nodesCreated: number,
   nodesUpdated: number,
   edgesCreated: number,
   edgesUpdated: number,
-  errors: string[],     // Batch error messages
-  duration: number,     // Milliseconds
+  errors: string[],
+  duration: number       // milliseconds
 }
 ```
+
+[Back to top](#table-of-contents)
 
 ---
 
@@ -562,46 +619,48 @@ All 9 recognized predicates with their on-chain term IDs and default weights:
 
 | Predicate | Term ID | Default Weight | Purpose |
 |-----------|---------|----------------|---------|
-| `trusts` | `0x3a73f3b1613d166eea141a25a2adc70db9304ab3c4e90daecad05f86487c3ee9` | **1.0** | Primary trust signal |
-| `distrust` | `0x93dd055a971886b66c5f4d9c29098ebdd9b7991890b6372a7e184c64321c9710` | **-0.5** | Negative trust (penalizes score) |
+| `trusts` | `0x3a73f3b1...c3ee9` | **1.0** | Primary trust signal |
+| `distrust` | `0x93dd055a...9710` | **-0.5** | Negative trust (penalizes score) |
 | `follow` | *(none)* | **0.7** | Social follow relationship |
-| `visits_for_work` | `0x73872e1840362760d0144599493fc6f22ec5042f85ae7b8904576999a189d76b` | **0.4** | Work-related visits |
-| `visits_for_learning` | `0x5d6fcc892d3634b61e743d256289dd95f60604ee07f170aea9b4980b5eeda282` | **0.3** | Learning-related visits |
-| `visits_for_fun` | `0xb8b8ab8d23678edad85cec5e580caeb564a88b532f8dfd884f93dcf2cab32459` | **0.2** | Leisure visits |
-| `visits_for_inspiration` | `0xd635b7467c9f89a9d243b82c5e4f6a97d238ad91a914b5de9949e107e5f59825` | **0.2** | Inspirational visits |
-| `visits_for_buying` | `0x3b2089f0aa24da0473fd1ad01c555c80c6b17e6ac1de39c68c588640487f845d` | **0.2** | Purchase visits |
-| `visits_for_music` | `0xdeced28a3213eec9e29e42ded5302864b0db614f708599e552a7aac7f40f8fb7` | **0.2** | Music-related visits |
+| `visits_for_work` | `0x73872e18...d76b` | **0.4** | Work-related visits |
+| `visits_for_learning` | `0x5d6fcc89...a282` | **0.3** | Learning-related visits |
+| `visits_for_fun` | `0xb8b8ab8d...2459` | **0.2** | Leisure visits |
+| `visits_for_inspiration` | `0xd635b746...9825` | **0.2** | Inspirational visits |
+| `visits_for_buying` | `0x3b2089f0...845d` | **0.2** | Purchase visits |
+| `visits_for_music` | `0xdeced28a...8fb7` | **0.2** | Music-related visits |
 
-There is also a legacy `PREDICATE_WEIGHTS` map in `constants.ts` with a
-subset of predicates (trusts: 1.0, vouches: 0.9, follow: 0.7, has tag: 0.3,
-Intuition: 0.5) and a `DEFAULT_PREDICATE_WEIGHT` of 0.5. The canonical
-registry is in `config/predicates.ts`.
+Full term IDs are available via the `get_predicate_config` tool.
 
 ### Weight Resolution
 
-The `getPredicateWeight(predicate, customWeights?)` function resolves weights
-with the following priority:
+Predicate weights are resolved with the following priority:
 
 ```
-1. customWeights[predicate]   -- runtime override (if provided)
-2. DEFAULT_WEIGHTS[predicate] -- registry default
-3. 0                          -- unknown predicate fallback
+1. Custom runtime override    (if provided per-call)
+2. Registry default           (from the predicate table above)
+3. 0                          (unknown predicate fallback)
 ```
 
 ### Custom Overrides
 
 Custom weights can be passed at the tool level:
 
-- `find_trust_paths` accepts a `predicateWeights` object (e.g. `{"trusts": 1.0, "follow": 0.5}`)
-- `computeEigenTrust` and `buildTransitionMatrix` accept a `PredicateWeights` parameter
-- Custom weights only need to include predicates being overridden; unmentioned predicates
-  use their defaults
+- `find_trust_paths` accepts a `predicateWeights` object
+  (e.g. `{"trusts": 1.0, "follow": 0.5}`)
+- `compute_eigentrust` accepts predicate weight overrides for matrix construction
+- Custom weights only need to include predicates being overridden; unmentioned
+  predicates fall back to their registry defaults
 
 ### Design Rationale
 
-- **trusts (1.0)**: Highest-signal predicate -- explicit trust relationship
-- **distrust (-0.5)**: Negative weight penalizes trust scores along paths containing distrust
-- **follow (0.7)**: Strong social signal but less explicit than trust
-- **visits_for_work (0.4)**: Behavioral signal, moderate weight
-- **visits_for_* (0.2-0.3)**: Weakest signals -- behavioral but not explicit trust indicators
-- Visit weights decrease by purpose: work (0.4) > learning (0.3) > fun/inspiration/buying/music (0.2)
+- **trusts (1.0)** -- highest-signal predicate, an explicit trust relationship
+- **distrust (-0.5)** -- negative weight penalizes trust scores along paths
+  containing distrust attestations
+- **follow (0.7)** -- strong social signal but less explicit than trust
+- **visits_for_work (0.4)** -- behavioral signal with moderate weight
+- **visits_for_* (0.2-0.3)** -- weakest signals, behavioral but not explicit
+  trust indicators
+- Visit weights decrease by intentionality: work (0.4) > learning (0.3) >
+  fun / inspiration / buying / music (0.2)
+
+[Back to top](#table-of-contents)
