@@ -299,12 +299,24 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
       };
     }
     case 'get_sync_status': {
-      // lastSyncedAt timestamp is already available via get_graph_stats
+      // Combine in-memory cron state with persisted Meta node fields so the
+      // response survives server restarts.
       const status = getSyncStatus();
+      const graphStats = await getGraphStats();
+      const combined = {
+        isRunning: status.isRunning,
+        nextRun: status.nextRun,
+        lastSyncedAt: graphStats.lastSyncedAt ?? null,
+        lastSyncStatus: graphStats.lastSyncStatus ?? null,
+        lastSyncDurationMs: graphStats.lastSyncDurationMs ?? null,
+        lastSyncNodesCreated: graphStats.lastSyncNodesCreated ?? null,
+        lastSyncEdgesCreated: graphStats.lastSyncEdgesCreated ?? null,
+        lastRunSuccess: status.lastRunSuccess,
+      };
       return {
         content: [{
           type: 'text',
-          text: JSON.stringify(status, null, 2),
+          text: JSON.stringify(combined, null, 2),
         }],
       };
     }
