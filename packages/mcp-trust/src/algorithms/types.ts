@@ -71,6 +71,8 @@ export interface PersonalizedTrustQuery {
   maxHops: number;
   /** Minimum stake threshold to consider an attestation valid */
   minStake: number;
+  /** Optional predicate weight overrides (keyed by predicate name) */
+  predicateWeights?: Record<string, number>;
 }
 
 // ============ Result Types ============

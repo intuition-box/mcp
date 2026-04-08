@@ -149,6 +149,10 @@ const TRUST_TOOLS = [
         toAddress: { type: 'string', description: 'Target address' },
         maxHops: { type: 'number', description: 'Maximum path length (default 3)' },
         minStake: { type: 'number', description: 'Minimum stake threshold (default 0)' },
+        predicateWeights: {
+          type: 'object',
+          description: 'Custom predicate weights to override defaults per query. Keys are predicate names, values are numeric weights.',
+        },
       },
       required: ['fromAddress', 'toAddress'],
       additionalProperties: false,
@@ -255,11 +259,15 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     }
     case 'compute_personalized_trust': {
+      const predicateWeights = (args.predicateWeights && typeof args.predicateWeights === 'object' && !Array.isArray(args.predicateWeights))
+        ? args.predicateWeights as Record<string, number>
+        : undefined;
       const result = await computePersonalizedTrust({
         fromAddress: args.fromAddress as string,
         toAddress: args.toAddress as string,
         maxHops: typeof args.maxHops === 'number' ? args.maxHops : 3,
         minStake: typeof args.minStake === 'number' ? args.minStake : 0,
+        predicateWeights,
       });
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     }
