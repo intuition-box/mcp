@@ -326,14 +326,18 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
       };
     }
     case 'get_sync_status': {
-      // Combine in-memory cron state with the persisted lastSyncedAt timestamp
-      // so the last-sync time survives server restarts.
+      // Combine in-memory cron state with persisted Meta node fields so the
+      // response survives server restarts.
       const status = getSyncStatus();
       const graphStats = await getGraphStats();
       const combined = {
         isRunning: status.isRunning,
         nextRun: status.nextRun,
         lastSyncedAt: graphStats.lastSyncedAt ?? null,
+        lastSyncStatus: graphStats.lastSyncStatus ?? null,
+        lastSyncDurationMs: graphStats.lastSyncDurationMs ?? null,
+        lastSyncNodesCreated: graphStats.lastSyncNodesCreated ?? null,
+        lastSyncEdgesCreated: graphStats.lastSyncEdgesCreated ?? null,
         lastRunSuccess: status.lastRunSuccess,
       };
       return {
