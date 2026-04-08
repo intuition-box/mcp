@@ -122,6 +122,12 @@ const registry: readonly McpEntry[] = Object.freeze([
         name: 'trust-path',
         description: 'Find the strongest trust path between a source and target agent.',
       },
+      {
+        name: 'get_sync_status',
+        description:
+          'Returns the current auto-sync cron job status -- whether it is running, ' +
+          'next scheduled run, last run time, and whether the last run succeeded.',
+      },
     ]),
     serverUrl: process.env.NEXT_PUBLIC_MCP_TRUST_URL || 'http://localhost:3002',
   }),

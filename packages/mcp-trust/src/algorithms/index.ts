@@ -39,6 +39,14 @@ export {
   getPathsFromCypherResult,
 } from './pathfinding.js';
 
+// Predicate filtering config
+export type { PredicateWeights } from '../config/predicates.js';
+export {
+  TRUST_PREDICATES,
+  DEFAULT_WEIGHTS,
+  getPredicateWeight as getConfiguredPredicateWeight,
+} from '../config/predicates.js';
+
 // EigenTrust algorithm
 export type { EdgeData } from './eigentrust.js';
 export {

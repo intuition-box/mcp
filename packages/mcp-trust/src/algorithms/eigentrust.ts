@@ -18,8 +18,11 @@ import {
 } from './types.js';
 import {
   DEFAULT_EIGENTRUST_CONFIG,
-  getPredicateWeight,
 } from './constants.js';
+import {
+  getPredicateWeight,
+  PredicateWeights,
+} from '../config/predicates.js';
 
 // ============ Types ============
 
@@ -71,7 +74,8 @@ type TransitionMatrix = Map<string, Map<string, number>>;
  * @returns TrustComputationResult with scores, iterations, and convergence status
  */
 export async function computeEigenTrust(
-  config?: Partial<EigenTrustConfig>
+  config?: Partial<EigenTrustConfig>,
+  predicateWeights?: PredicateWeights,
 ): Promise<TrustComputationResult> {
   const startTime = Date.now();
 
@@ -106,8 +110,8 @@ export async function computeEigenTrust(
       edgeCount: graphData.edges.length,
     });
 
-    // Build transition matrix
-    const transitionMatrix = buildTransitionMatrix(graphData.edges);
+    // Build transition matrix (apply predicate weights)
+    const transitionMatrix = buildTransitionMatrix(graphData.edges, predicateWeights);
 
     // Initialize trust scores (uniform distribution)
     let currentScores = initializeTrustScores(graphData.addresses);
@@ -206,13 +210,16 @@ export function initializeTrustScores(addresses: string[]): Map<string, number> 
  * @param edges - Array of attestation edges from the graph
  * @returns Normalized transition matrix as nested Maps
  */
-export function buildTransitionMatrix(edges: EdgeData[]): TransitionMatrix {
+export function buildTransitionMatrix(
+  edges: EdgeData[],
+  predicateWeights?: PredicateWeights,
+): TransitionMatrix {
   const matrix: TransitionMatrix = new Map();
   const outgoingSums = new Map<string, number>();
 
   // First pass: compute raw weights and outgoing sums
   for (const edge of edges) {
-    const weight = computeEdgeWeight(edge);
+    const weight = computeEdgeWeight(edge, predicateWeights);
 
     if (!matrix.has(edge.from)) {
       matrix.set(edge.from, new Map());
@@ -248,8 +255,8 @@ export function buildTransitionMatrix(edges: EdgeData[]): TransitionMatrix {
  * @param edge - Edge data containing stake and predicate
  * @returns Computed edge weight
  */
-function computeEdgeWeight(edge: EdgeData): number {
-  const predicateWeight = getPredicateWeight(edge.predicate);
+function computeEdgeWeight(edge: EdgeData, predicateWeights?: PredicateWeights): number {
+  const predicateWeight = getPredicateWeight(edge.predicate, predicateWeights);
   // Use stake directly (already normalized or in reasonable range)
   // For very large stakes, we could apply log normalization here
   const stakeWeight = Math.max(0, edge.stakeAmount);
