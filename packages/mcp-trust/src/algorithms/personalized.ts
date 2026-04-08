@@ -89,7 +89,7 @@ export async function computePersonalizedTrust(
   }
 
   // Find all paths from source to target
-  const pathResult = await findTrustPaths(fromAddress, toAddress, maxHops);
+  const pathResult = await findTrustPaths(fromAddress, toAddress, maxHops, fullQuery.predicateWeights);
 
   // Filter paths by minimum stake if specified
   const filteredPaths = minStake > 0
