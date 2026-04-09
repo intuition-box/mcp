@@ -139,6 +139,10 @@ const TRUST_TOOLS = [
         eigentrustWeight: { type: 'number', description: 'Override EigenTrust weight in composite (0-1, default 0.4)' },
         agentRankWeight: { type: 'number', description: 'Override AgentRank weight in composite (0-1, default 0.3)' },
         transitiveTrustWeight: { type: 'number', description: 'Override transitive trust weight in composite (0-1, default 0.3)' },
+        predicateWeights: {
+          type: 'object',
+          description: 'Custom predicate weights to override defaults per query. Keys are predicate names, values are numeric weights. Only affects the transitive-trust component; EigenTrust and AgentRank ignore predicate weights.',
+        },
       },
       required: ['address'],
       additionalProperties: false,
@@ -271,8 +275,17 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
       const etW = typeof args.eigentrustWeight === 'number' ? args.eigentrustWeight : undefined;
       const arW = typeof args.agentRankWeight === 'number' ? args.agentRankWeight : undefined;
       const ttW = typeof args.transitiveTrustWeight === 'number' ? args.transitiveTrustWeight : undefined;
-      const config = (etW !== undefined || arW !== undefined || ttW !== undefined)
-        ? { weights: { eigentrust: etW ?? 0.4, agentrank: arW ?? 0.3, transitiveTrust: ttW ?? 0.3 } }
+      const predicateWeights = (args.predicateWeights && typeof args.predicateWeights === 'object' && !Array.isArray(args.predicateWeights))
+        ? args.predicateWeights as Record<string, number>
+        : undefined;
+      const hasWeightOverrides = etW !== undefined || arW !== undefined || ttW !== undefined;
+      const config = (hasWeightOverrides || predicateWeights !== undefined)
+        ? {
+            ...(hasWeightOverrides && {
+              weights: { eigentrust: etW ?? 0.4, agentrank: arW ?? 0.3, transitiveTrust: ttW ?? 0.3 },
+            }),
+            ...(predicateWeights !== undefined && { predicateWeights }),
+          }
         : undefined;
       const result = await computeCompositeScore(address, fromAddress, config);
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
