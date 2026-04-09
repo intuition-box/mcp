@@ -47,6 +47,11 @@ import {
 import { TRUST_PREDICATES, DEFAULT_WEIGHTS } from './config/predicates.js';
 import { startCronSync, stopCronSync, getSyncStatus } from './cron.js';
 
+// Concurrency guard for the run_sync MCP tool. Prevents a client-triggered
+// sync from running alongside another client-triggered sync. Note: the cron
+// path has its own guard in cron.ts, so this flag only protects the tool path.
+let isSyncRunning = false;
+
 /**
  * Initialize the trust engine.
  * All failures are non-fatal — the server stays alive regardless.
@@ -190,6 +195,20 @@ const TRUST_TOOLS = [
     description: 'Returns the current auto-sync cron job status including whether it is running, the next scheduled run time, the last run time, and whether the last run succeeded.',
     inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false },
   },
+  {
+    name: 'run_sync',
+    description: 'Manually trigger a graph sync from Intuition GraphQL to Neo4j. Fetches latest attestations and updates the trust graph. Returns sync result with nodes created, edges created, and duration.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        maxPages: {
+          type: 'number',
+          description: 'Maximum pages to fetch (default: 10, max recommended: 50)',
+        },
+      },
+      additionalProperties: false,
+    },
+  },
 ] as const;
 
 // MCP tool call handler — routes to existing engine functions
@@ -307,18 +326,14 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
       };
     }
     case 'get_sync_status': {
-      // Combine in-memory cron state with persisted Meta node fields so the
-      // response survives server restarts.
+      // Combine in-memory cron state with the persisted lastSyncedAt timestamp
+      // so the last-sync time survives server restarts.
       const status = getSyncStatus();
       const graphStats = await getGraphStats();
       const combined = {
         isRunning: status.isRunning,
         nextRun: status.nextRun,
         lastSyncedAt: graphStats.lastSyncedAt ?? null,
-        lastSyncStatus: graphStats.lastSyncStatus ?? null,
-        lastSyncDurationMs: graphStats.lastSyncDurationMs ?? null,
-        lastSyncNodesCreated: graphStats.lastSyncNodesCreated ?? null,
-        lastSyncEdgesCreated: graphStats.lastSyncEdgesCreated ?? null,
         lastRunSuccess: status.lastRunSuccess,
       };
       return {
@@ -327,6 +342,34 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
           text: JSON.stringify(combined, null, 2),
         }],
       };
+    }
+    case 'run_sync': {
+      if (isSyncRunning) {
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              error: 'Sync already in progress. Try again when current sync completes.',
+            }),
+          }],
+        };
+      }
+      isSyncRunning = true;
+      try {
+        const maxPages = typeof args.maxPages === 'number' ? args.maxPages : 10;
+        // clearFirst is intentionally hardcoded to false. It wipes the entire
+        // Neo4j graph and must never be triggered from a public-facing tool.
+        // Re-add behind an auth gate if an admin-only variant is needed.
+        const result = await runSync({ maxPages, clearFirst: false });
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify(result, null, 2),
+          }],
+        };
+      } finally {
+        isSyncRunning = false;
+      }
     }
     default:
       throw new Error(`Unknown tool: ${name}`);
