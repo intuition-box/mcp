@@ -160,9 +160,13 @@ export async function runSync(options: {
     const errMsg = `Sync failed: ${error}`;
     log('error', errMsg);
     result.errors.push(errMsg);
-  } finally {
-    await closeDriver();
   }
+
+  // NOTE: the Neo4j driver is intentionally NOT closed here. runSync runs
+  // inside the long-lived MCP server process (via cron and the run_sync tool)
+  // and tearing down the shared driver would break every subsequent tool call.
+  // The driver is owned by the server lifecycle and closed in shutdown().
+  // For standalone script invocation, see the isMainModule block below.
 
   // Set duration if not already set (e.g., sync threw before reaching the Meta write)
   if (result.duration === 0) {
@@ -193,5 +197,10 @@ if (isMainModule) {
     .catch(error => {
       console.error('Fatal error:', error);
       process.exit(1);
+    })
+    .finally(async () => {
+      // Standalone script: close the driver so the Node process can exit cleanly.
+      // This branch is NOT hit when runSync is called from the long-lived server.
+      await closeDriver();
     });
 }

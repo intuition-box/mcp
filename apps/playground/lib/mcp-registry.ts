@@ -140,6 +140,13 @@ const registry: readonly McpEntry[] = Object.freeze([
           'Returns all available trust lenses. Each lens defines a filtered view of the ' +
           'attestation graph by predicate type, stake threshold, recency, or address scope.',
       },
+      {
+        name: 'run_sync',
+        description:
+          'Manually trigger a graph sync from Intuition GraphQL to Neo4j. Fetches latest ' +
+          'attestations and updates the trust graph. Returns sync result with nodes created, ' +
+          'edges created, and duration.',
+      },
     ]),
     serverUrl: process.env.NEXT_PUBLIC_MCP_TRUST_URL || 'http://localhost:3002',
   }),
