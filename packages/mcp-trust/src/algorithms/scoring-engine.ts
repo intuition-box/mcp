@@ -37,6 +37,13 @@ export interface CompositeScoreConfig {
   cacheResults: boolean;
   /** Cache time-to-live in milliseconds. Default 300000 (5 min) */
   cacheTTL: number;
+  /**
+   * Optional per-predicate weight overrides passed to the transitive-trust
+   * pathfinding step. Keys are predicate names; values are numeric weights
+   * that replace the defaults in getPredicateWeight() for this query only.
+   * Does not affect EigenTrust or AgentRank (neither reads predicate weights).
+   */
+  predicateWeights?: Record<string, number>;
 }
 
 /**
@@ -195,6 +202,7 @@ export async function computeCompositeScore(
       toAddress: address,
       maxHops: ttMaxHops,
       minStake: 0,
+      predicateWeights: fullConfig.predicateWeights,
     });
     ttScore = trustResult.score;
     ttPaths = trustResult.pathCount;
@@ -560,5 +568,7 @@ function mergeConfig(config?: Partial<CompositeScoreConfig>): CompositeScoreConf
       : { ...DEFAULT_COMPOSITE_CONFIG.weights },
     cacheResults: config.cacheResults ?? DEFAULT_COMPOSITE_CONFIG.cacheResults,
     cacheTTL: config.cacheTTL ?? DEFAULT_COMPOSITE_CONFIG.cacheTTL,
+    // Intentionally no default: undefined means "use built-in predicate weights"
+    predicateWeights: config.predicateWeights,
   };
 }

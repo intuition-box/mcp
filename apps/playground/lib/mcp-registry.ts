@@ -128,6 +128,13 @@ const registry: readonly McpEntry[] = Object.freeze([
           'Returns the current auto-sync cron job status -- whether it is running, ' +
           'next scheduled run, last run time, and whether the last run succeeded.',
       },
+      {
+        name: 'run_sync',
+        description:
+          'Manually trigger a graph sync from Intuition GraphQL to Neo4j. Fetches latest ' +
+          'attestations and updates the trust graph. Returns sync result with nodes created, ' +
+          'edges created, and duration.',
+      },
     ]),
     serverUrl: process.env.NEXT_PUBLIC_MCP_TRUST_URL || 'http://localhost:3002',
   }),

@@ -47,6 +47,11 @@ import {
 import { TRUST_PREDICATES, DEFAULT_WEIGHTS } from './config/predicates.js';
 import { startCronSync, stopCronSync, getSyncStatus } from './cron.js';
 
+// Concurrency guard for the run_sync MCP tool. Prevents a client-triggered
+// sync from running alongside another client-triggered sync. Note: the cron
+// path has its own guard in cron.ts, so this flag only protects the tool path.
+let isSyncRunning = false;
+
 /**
  * Initialize the trust engine.
  * All failures are non-fatal — the server stays alive regardless.
@@ -145,6 +150,10 @@ const TRUST_TOOLS = [
         toAddress: { type: 'string', description: 'Target address' },
         maxHops: { type: 'number', description: 'Maximum path length (default 3)' },
         minStake: { type: 'number', description: 'Minimum stake threshold (default 0)' },
+        predicateWeights: {
+          type: 'object',
+          description: 'Custom predicate weights to override defaults per query. Keys are predicate names, values are numeric weights.',
+        },
       },
       required: ['fromAddress', 'toAddress'],
       additionalProperties: false,
@@ -185,6 +194,20 @@ const TRUST_TOOLS = [
     name: 'get_sync_status',
     description: 'Returns the current auto-sync cron job status including whether it is running, the next scheduled run time, the last run time, and whether the last run succeeded.',
     inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'run_sync',
+    description: 'Manually trigger a graph sync from Intuition GraphQL to Neo4j. Fetches latest attestations and updates the trust graph. Returns sync result with nodes created, edges created, and duration.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        maxPages: {
+          type: 'number',
+          description: 'Maximum pages to fetch (default: 10, max recommended: 50)',
+        },
+      },
+      additionalProperties: false,
+    },
   },
 ] as const;
 
@@ -234,11 +257,15 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     }
     case 'compute_personalized_trust': {
+      const predicateWeights = (args.predicateWeights && typeof args.predicateWeights === 'object' && !Array.isArray(args.predicateWeights))
+        ? args.predicateWeights as Record<string, number>
+        : undefined;
       const result = await computePersonalizedTrust({
         fromAddress: args.fromAddress as string,
         toAddress: args.toAddress as string,
         maxHops: typeof args.maxHops === 'number' ? args.maxHops : 3,
         minStake: typeof args.minStake === 'number' ? args.minStake : 0,
+        predicateWeights,
       });
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     }
@@ -299,14 +326,50 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
       };
     }
     case 'get_sync_status': {
-      // lastSyncedAt timestamp is already available via get_graph_stats
+      // Combine in-memory cron state with the persisted lastSyncedAt timestamp
+      // so the last-sync time survives server restarts.
       const status = getSyncStatus();
+      const graphStats = await getGraphStats();
+      const combined = {
+        isRunning: status.isRunning,
+        nextRun: status.nextRun,
+        lastSyncedAt: graphStats.lastSyncedAt ?? null,
+        lastRunSuccess: status.lastRunSuccess,
+      };
       return {
         content: [{
           type: 'text',
-          text: JSON.stringify(status, null, 2),
+          text: JSON.stringify(combined, null, 2),
         }],
       };
+    }
+    case 'run_sync': {
+      if (isSyncRunning) {
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              error: 'Sync already in progress. Try again when current sync completes.',
+            }),
+          }],
+        };
+      }
+      isSyncRunning = true;
+      try {
+        const maxPages = typeof args.maxPages === 'number' ? args.maxPages : 10;
+        // clearFirst is intentionally hardcoded to false. It wipes the entire
+        // Neo4j graph and must never be triggered from a public-facing tool.
+        // Re-add behind an auth gate if an admin-only variant is needed.
+        const result = await runSync({ maxPages, clearFirst: false });
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify(result, null, 2),
+          }],
+        };
+      } finally {
+        isSyncRunning = false;
+      }
     }
     default:
       throw new Error(`Unknown tool: ${name}`);
