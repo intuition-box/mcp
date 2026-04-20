@@ -153,7 +153,13 @@ const TRUST_TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        fromAddress: { type: 'string', description: 'Source address' },
+        fromAddress: {
+          oneOf: [
+            { type: 'string', description: 'Single source address' },
+            { type: 'array', items: { type: 'string' }, description: 'Group of source addresses — trust is averaged across the group' },
+          ],
+          description: 'Source address or array of addresses (group anchor mode)',
+        },
         toAddress: { type: 'string', description: 'Target address' },
         maxHops: { type: 'number', description: 'Maximum path length (default 3)' },
         minStake: { type: 'number', description: 'Minimum stake threshold (default 0)' },
@@ -282,8 +288,11 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
       const predicateWeights = (args.predicateWeights && typeof args.predicateWeights === 'object' && !Array.isArray(args.predicateWeights))
         ? args.predicateWeights as Record<string, number>
         : undefined;
+      const fromAddress = Array.isArray(args.fromAddress)
+        ? args.fromAddress as string[]
+        : args.fromAddress as string;
       const result = await computePersonalizedTrust({
-        fromAddress: args.fromAddress as string,
+        fromAddress,
         toAddress: args.toAddress as string,
         maxHops: typeof args.maxHops === 'number' ? args.maxHops : 3,
         minStake: typeof args.minStake === 'number' ? args.minStake : 0,
