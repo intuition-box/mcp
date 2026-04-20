@@ -1,0 +1,48 @@
+
+> @intuition-box/mcp-trust@1.2.0 dev
+> cross-env NODE_OPTIONS=--openssl-legacy-provider tsx src/index.ts score 0x744D70FDBE2Ba4CF95131626614a1763DF805B9e
+
+[36m[2026-04-20T18:59:54.883Z] INFO [0m Setting up Neo4j schema constraints and indexes
+[36m[2026-04-20T18:59:55.627Z] INFO [0m Schema setup complete
+[36m[2026-04-20T18:59:55.627Z] INFO [0m Trust engine initialized with Neo4j connection
+
+Computing composite trust score for: 0x744D70FDBE2Ba4CF95131626614a1763DF805B9e
+
+[36m[2026-04-20T18:59:55.631Z] INFO [0m Computing fresh global scores (EigenTrust + AgentRank)
+[36m[2026-04-20T18:59:55.632Z] INFO [0m Starting EigenTrust computation {"maxIterations":100,"convergenceThreshold":0.0001,"pretrustWeight":0.1}
+[36m[2026-04-20T18:59:55.644Z] INFO [0m Starting AgentRank computation {"dampingFactor":0.85,"convergenceThreshold":0.000001,"maxIterations":100,"stakeWeighted":true}
+[36m[2026-04-20T19:00:02.947Z] INFO [0m Graph data loaded {"addressCount":16445,"edgeCount":16996}
+[36m[2026-04-20T19:00:12.189Z] INFO [0m EigenTrust computation complete {"iterations":3,"converged":true,"computationTimeMs":16557,"scoreCount":16445}
+[36m[2026-04-20T19:00:13.841Z] INFO [0m Graph data loaded for AgentRank {"addressCount":16445,"edgeCount":16996}
+[36m[2026-04-20T19:00:14.153Z] INFO [0m AgentRank computation complete {"iterations":7,"converged":true,"computationTimeMs":18509,"nodeCount":16445,"gini":"0.0021"}
+[36m[2026-04-20T19:00:14.178Z] INFO [0m Global scores computed and indexed {"eigentrustNodes":16445,"agentrankNodes":16445,"maxEigentrust":"0.005472","maxAgentrank":"0.017758"}
+================================================================================
+Composite Trust Score
+================================================================================
+Address:    0x744D70FDBE2Ba4CF95131626614a1763DF805B9e
+Score:      0.00 / 100
+Confidence: 0.0%
+--------------------------------------------------------------------------------
+
+  Score Breakdown:
+
+  +----------------------+--------------+--------------+----------+------------+
+  | Component            | Raw Score    | Normalized   | Weight   | Contrib.   |
+  +----------------------+--------------+--------------+----------+------------+
+  | EigenTrust           | 0.000000     | 0.0000       | 57%      | 0.00       |
+  | AgentRank            | 0.000000     | 0.0000       | 43%      | 0.00       |
+  | Transitive Trust     | 0.000000     | 0.0000       | 0%       | 0.00       |
+  +----------------------+--------------+--------------+----------+------------+
+  | TOTAL                |              |              | 100%     | 0.00       |
+  +----------------------+--------------+--------------+----------+------------+
+
+  Network:  16445 nodes
+  Compute:  18549ms
+  Data age: 2026-04-20T18:59:55.631Z
+--------------------------------------------------------------------------------
+
+Interpretation:
+  Minimal trust — very little network presence or new address.
+
+================================================================================
+[36m[2026-04-20T19:00:14.188Z] INFO [0m Trust engine shutdown complete
