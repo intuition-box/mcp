@@ -63,8 +63,12 @@ export interface EigenTrustConfig {
  * Computes trust from a specific source to a specific target
  */
 export interface PersonalizedTrustQuery {
-  /** Source address (trust originates from here) */
-  fromAddress: string;
+  /**
+   * Source address (trust originates from here).
+   * When an array is provided, trust is computed from each anchor to toAddress
+   * and results are averaged.
+   */
+  fromAddress: string | string[];
   /** Target address (trust is computed for this address) */
   toAddress: string;
   /** Maximum number of hops to traverse in the graph */

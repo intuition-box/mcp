@@ -68,7 +68,48 @@ const PAGERANK_CONVERGENCE_THRESHOLD = 0.0001;
 export async function computePersonalizedTrust(
   query: PersonalizedTrustQuery
 ): Promise<TrustScore> {
-  const fullQuery: PersonalizedTrustQuery = {
+  const { fromAddress } = query;
+
+  if (Array.isArray(fromAddress)) {
+    if (fromAddress.length === 0) {
+      return createZeroTrustScore(query.toAddress);
+    }
+
+    const perAnchorResults = await Promise.all(
+      fromAddress.map(anchor =>
+        computeSinglePersonalizedTrust({ ...query, fromAddress: anchor })
+      )
+    );
+
+    const n = perAnchorResults.length;
+    const avgScore = perAnchorResults.reduce((sum, r) => sum + r.score, 0) / n;
+    const avgConfidence = perAnchorResults.reduce((sum, r) => sum + r.confidence, 0) / n;
+    const totalPathCount = perAnchorResults.reduce((sum, r) => sum + r.pathCount, 0);
+    const uniqueSources = Array.from(
+      new Set(perAnchorResults.flatMap(r => r.sources))
+    );
+
+    return {
+      address: query.toAddress,
+      score: Math.max(0, Math.min(1, avgScore)),
+      confidence: Math.max(0, Math.min(1, avgConfidence)),
+      pathCount: totalPathCount,
+      sources: uniqueSources,
+    };
+  }
+
+  return computeSinglePersonalizedTrust({ ...query, fromAddress });
+}
+
+/**
+ * Core single-anchor personalized trust computation.
+ * Separated so the exported computePersonalizedTrust can dispatch between
+ * single-string and string[] (group anchor) modes without recursion.
+ */
+async function computeSinglePersonalizedTrust(
+  query: PersonalizedTrustQuery & { fromAddress: string }
+): Promise<TrustScore> {
+  const fullQuery: PersonalizedTrustQuery & { fromAddress: string } = {
     ...DEFAULT_QUERY_CONFIG,
     ...query,
   };
