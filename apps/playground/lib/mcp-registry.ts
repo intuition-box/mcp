@@ -129,18 +129,6 @@ const registry: readonly McpEntry[] = Object.freeze([
           'next scheduled run, last run time, and whether the last run succeeded.',
       },
       {
-        name: 'get_sync_health',
-        description:
-          'Returns detailed sync health metrics for the Neo4j graph including last sync status, ' +
-          'duration, nodes/edges created, error count, and overall graph size.',
-      },
-      {
-        name: 'get_lens_registry',
-        description:
-          'Returns all available trust lenses. Each lens defines a filtered view of the ' +
-          'attestation graph by predicate type, stake threshold, recency, or address scope.',
-      },
-      {
         name: 'run_sync',
         description:
           'Manually trigger a graph sync from Intuition GraphQL to Neo4j. Fetches latest ' +

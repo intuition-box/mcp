@@ -46,7 +46,6 @@ import {
 } from './algorithms/index.js';
 import { TRUST_PREDICATES, DEFAULT_WEIGHTS } from './config/predicates.js';
 import { startCronSync, stopCronSync, getSyncStatus } from './cron.js';
-import { getLensRegistry } from './lenses/index.js';
 
 // Concurrency guard for the run_sync MCP tool. Prevents a client-triggered
 // sync from running alongside another client-triggered sync. Note: the cron
@@ -208,16 +207,6 @@ const TRUST_TOOLS = [
   {
     name: 'get_sync_status',
     description: 'Returns the current auto-sync cron job status including whether it is running, the next scheduled run time, the last run time, and whether the last run succeeded.',
-    inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false },
-  },
-  {
-    name: 'get_sync_health',
-    description: 'Returns detailed sync health metrics for the Neo4j graph including last sync status, duration, nodes/edges created, error count, and overall graph size.',
-    inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false },
-  },
-  {
-    name: 'get_lens_registry',
-    description: 'Returns all available trust lenses. Each lens defines a filtered view of the attestation graph by predicate type, stake threshold, recency, or address scope.',
     inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false },
   },
   {
@@ -395,33 +384,6 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
         content: [{
           type: 'text',
           text: JSON.stringify(combined, null, 2),
-        }],
-      };
-    }
-    case 'get_sync_health': {
-      const stats = await getGraphStats();
-      const health = {
-        lastSyncedAt: stats.lastSyncedAt,
-        lastSyncStatus: stats.lastSyncStatus,
-        lastSyncDurationMs: stats.lastSyncDurationMs,
-        lastSyncNodesCreated: stats.lastSyncNodesCreated,
-        lastSyncEdgesCreated: stats.lastSyncEdgesCreated,
-        addressCount: stats.addressCount,
-        attestationCount: stats.attestationCount,
-      };
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(health, null, 2),
-        }],
-      };
-    }
-    case 'get_lens_registry': {
-      const lenses = getLensRegistry();
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({ lenses }, null, 2),
         }],
       };
     }
