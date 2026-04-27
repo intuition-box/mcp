@@ -81,12 +81,21 @@ export async function computePersonalizedTrust(
       )
     );
 
-    const n = perAnchorResults.length;
-    const avgScore = perAnchorResults.reduce((sum, r) => sum + r.score, 0) / n;
-    const avgConfidence = perAnchorResults.reduce((sum, r) => sum + r.confidence, 0) / n;
-    const totalPathCount = perAnchorResults.reduce((sum, r) => sum + r.pathCount, 0);
+    // Only anchors that found at least one trust path contribute to the
+    // averages. Including zero-confidence results would dilute the group
+    // score whenever a single anchor lacks a path to the target.
+    const contributingResults = perAnchorResults.filter(r => r.confidence > 0);
+
+    if (contributingResults.length === 0) {
+      return createZeroTrustScore(query.toAddress);
+    }
+
+    const n = contributingResults.length;
+    const avgScore = contributingResults.reduce((sum, r) => sum + r.score, 0) / n;
+    const avgConfidence = contributingResults.reduce((sum, r) => sum + r.confidence, 0) / n;
+    const totalPathCount = contributingResults.reduce((sum, r) => sum + r.pathCount, 0);
     const uniqueSources = Array.from(
-      new Set(perAnchorResults.flatMap(r => r.sources))
+      new Set(contributingResults.flatMap(r => r.sources))
     );
 
     return {

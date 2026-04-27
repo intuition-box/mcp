@@ -159,7 +159,7 @@ const TRUST_TOOLS = [
             { type: 'string', description: 'Single source address' },
             { type: 'array', items: { type: 'string' }, description: 'Group of source addresses — trust is averaged across the group' },
           ],
-          description: 'Source address or array of addresses (group anchor mode)',
+          description: 'Source address or group of addresses. Accepts a single address, a JSON array, or a comma-separated list of addresses.',
         },
         toAddress: { type: 'string', description: 'Target address' },
         maxHops: { type: 'number', description: 'Maximum path length (default 3)' },
@@ -300,9 +300,14 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
       const predicateWeights = (args.predicateWeights && typeof args.predicateWeights === 'object' && !Array.isArray(args.predicateWeights))
         ? args.predicateWeights as Record<string, number>
         : undefined;
-      const fromAddress = Array.isArray(args.fromAddress)
-        ? args.fromAddress as string[]
-        : args.fromAddress as string;
+      let fromAddress: string | string[];
+      if (Array.isArray(args.fromAddress)) {
+        fromAddress = args.fromAddress as string[];
+      } else if (typeof args.fromAddress === 'string' && args.fromAddress.includes(',')) {
+        fromAddress = args.fromAddress.split(',').map((a: string) => a.trim()).filter((a: string) => a.length > 0);
+      } else {
+        fromAddress = args.fromAddress as string;
+      }
       const result = await computePersonalizedTrust({
         fromAddress,
         toAddress: args.toAddress as string,
