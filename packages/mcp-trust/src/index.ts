@@ -401,7 +401,6 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
         lastSyncDurationMs: stats.lastSyncDurationMs,
         lastSyncNodesCreated: stats.lastSyncNodesCreated,
         lastSyncEdgesCreated: stats.lastSyncEdgesCreated,
-        lastSyncErrorCount: stats.lastSyncErrorCount,
         addressCount: stats.addressCount,
         attestationCount: stats.attestationCount,
       };

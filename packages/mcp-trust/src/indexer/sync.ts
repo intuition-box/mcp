@@ -13,7 +13,7 @@ import {
 import { initializeGraphQLClient, fetchAllTriples } from '../graphql/client.js';
 import { transformTriples } from './transform.js';
 import { setupSchema } from '../graph/schema.js';
-import { upsertAddresses, upsertAttestations, getGraphStats } from '../graph/queries.js';
+import { upsertAddresses, upsertAttestations } from '../graph/queries.js';
 import { SyncResult } from '../types/index.js';
 import { log } from '../utils/logger.js';
 
@@ -123,33 +123,24 @@ export async function runSync(options: {
     result.edgesCreated = totalEdges;
     result.duration = Date.now() - startTime;
 
-    // Get final graph counts before writing Meta
-    const stats = await getGraphStats();
-    log('info', 'Final graph statistics', stats);
-
-    // Write sync health data to Neo4j Meta node
-    const syncStatus = result.errors.length === 0 ? 'success' : 'partial';
+    // Write sync metadata to Neo4j. Duration is captured here (before the bottom
+    // guard) so the persisted value reflects the actual sync time on success.
     const metaSession = getSession();
     try {
+      const status = result.errors.length === 0 ? 'success' : 'error';
       await metaSession.run(
         `MERGE (m:Meta {key: 'sync'})
          SET m.lastSyncedAt = $now,
-             m.nodesCreated = $nodesCreated,
-             m.edgesCreated = $edgesCreated,
-             m.errorCount = $errorCount,
-             m.durationMs = $durationMs,
-             m.totalNodes = $totalNodes,
-             m.totalEdges = $totalEdges,
-             m.status = $status`,
+             m.lastSyncStatus = $status,
+             m.lastSyncDurationMs = $durationMs,
+             m.lastSyncNodesCreated = $nodesCreated,
+             m.lastSyncEdgesCreated = $edgesCreated`,
         {
           now: new Date().toISOString(),
+          status,
+          durationMs: result.duration,
           nodesCreated: result.nodesCreated,
           edgesCreated: result.edgesCreated,
-          errorCount: result.errors.length,
-          durationMs: result.duration,
-          totalNodes: stats.addressCount,
-          totalEdges: stats.attestationCount,
-          status: syncStatus,
         }
       );
     } finally {

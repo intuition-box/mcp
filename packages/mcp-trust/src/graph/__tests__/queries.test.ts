@@ -111,7 +111,6 @@ describe('getGraphStats', () => {
     expect(stats.lastSyncDurationMs).toBe(5000);
     expect(stats.lastSyncNodesCreated).toBe(42);
     expect(stats.lastSyncEdgesCreated).toBe(108);
-    expect(stats.lastSyncErrorCount).toBe(0);
   });
 
   it('handles null Meta node (no sync yet)', async () => {
@@ -146,7 +145,6 @@ describe('getGraphStats', () => {
     expect(stats.lastSyncDurationMs).toBeNull();
     expect(stats.lastSyncNodesCreated).toBeNull();
     expect(stats.lastSyncEdgesCreated).toBeNull();
-    expect(stats.lastSyncErrorCount).toBeNull();
   });
 
   it('handles plain number values in Meta node fields', async () => {
@@ -186,7 +184,6 @@ describe('getGraphStats', () => {
     expect(stats.lastSyncDurationMs).toBe(3000);
     expect(stats.lastSyncNodesCreated).toBe(10);
     expect(stats.lastSyncEdgesCreated).toBe(20);
-    expect(stats.lastSyncErrorCount).toBe(2);
   });
 
   it('closes session after success', async () => {
