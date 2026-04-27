@@ -18,6 +18,7 @@ import { log } from '../utils/logger.js';
 import { computeEigenTrust } from './eigentrust.js';
 import { computeAgentRank } from './agentrank.js';
 import { computePersonalizedTrust } from './personalized.js';
+import { TRUST_PREDICATES } from '../config/predicates.js';
 import type { TrustComputationResult } from './types.js';
 import type { AgentRankResult } from './agentrank.js';
 
@@ -77,6 +78,21 @@ export interface TransitiveTrustBreakdown {
 }
 
 /**
+ * Per-predicate weight contribution under the effective weight map
+ * (defaults merged with any query-level overrides).
+ */
+export interface PredicateContribution {
+  /** Predicate name */
+  predicate: string;
+  /** Raw weight used for this predicate */
+  weight: number;
+  /** Weight divided by the sum of all effective weights */
+  normalizedWeight: number;
+  /** Percentage contribution, rounded to 2 decimals */
+  contributionPct: number;
+}
+
+/**
  * Full composite score result for a single address
  */
 export interface CompositeScoreResult {
@@ -91,6 +107,12 @@ export interface CompositeScoreResult {
     eigentrust: EigentrustBreakdown;
     agentrank: AgentrankBreakdown;
     transitiveTrust: TransitiveTrustBreakdown;
+    /**
+     * Effective per-predicate weight breakdown (defaults merged with any
+     * query-level predicateWeights override). Populated by computeCompositeScore;
+     * omitted by batchCompositeScores.
+     */
+    predicateContributions?: PredicateContribution[];
   };
   /** Computation metadata */
   metadata: {
@@ -220,6 +242,26 @@ export async function computeCompositeScore(
   // Confidence: based on how many signals contributed meaningful data
   const confidence = computeConfidence(etScore, arScore, ttScore, !!fromAddress);
 
+  // Build effective predicate weight map: defaults from TRUST_PREDICATES,
+  // overridden by any query-level predicateWeights. Populated regardless of
+  // whether transitive trust was actually used (reflects "what would the
+  // weights be if used" semantics).
+  const effectiveWeights: Record<string, number> = Object.fromEntries(
+    Object.entries(TRUST_PREDICATES).map(([k, v]) => [k, v.weight])
+  );
+  if (fullConfig.predicateWeights) {
+    Object.assign(effectiveWeights, fullConfig.predicateWeights);
+  }
+  const totalWeight = Object.values(effectiveWeights).reduce((a, b) => a + b, 0);
+  const predicateContributions: PredicateContribution[] = Object.entries(effectiveWeights)
+    .map(([predicate, weight]) => ({
+      predicate,
+      weight,
+      normalizedWeight: weight / totalWeight,
+      contributionPct: Math.round((weight / totalWeight) * 10000) / 100,
+    }))
+    .sort((a, b) => b.contributionPct - a.contributionPct);
+
   const computeTimeMs = Date.now() - startTime;
 
   return {
@@ -242,6 +284,7 @@ export async function computeCompositeScore(
         paths: ttPaths,
         maxHops: ttMaxHops,
       },
+      predicateContributions,
     },
     metadata: {
       totalNodes: global.totalNodes,

@@ -135,6 +135,13 @@ const TRUST_TOOLS = [
       properties: {
         address: { type: 'string', description: 'The address to evaluate' },
         fromAddress: { type: 'string', description: 'Optional source address for personalized transitive trust perspective' },
+        eigentrustWeight: { type: 'number', description: 'Override EigenTrust weight in composite (0-1, default 0.4)' },
+        agentRankWeight: { type: 'number', description: 'Override AgentRank weight in composite (0-1, default 0.3)' },
+        transitiveTrustWeight: { type: 'number', description: 'Override transitive trust weight in composite (0-1, default 0.3)' },
+        predicateWeights: {
+          type: 'object',
+          description: 'Custom predicate weights to override defaults per query. Keys are predicate names, values are numeric weights. Only affects the transitive-trust component; EigenTrust and AgentRank ignore predicate weights.',
+        },
       },
       required: ['address'],
       additionalProperties: false,
@@ -146,7 +153,13 @@ const TRUST_TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        fromAddress: { type: 'string', description: 'Source address' },
+        fromAddress: {
+          oneOf: [
+            { type: 'string', description: 'Single source address' },
+            { type: 'array', items: { type: 'string' }, description: 'Group of source addresses — trust is averaged across the group' },
+          ],
+          description: 'Source address or array of addresses (group anchor mode)',
+        },
         toAddress: { type: 'string', description: 'Target address' },
         maxHops: { type: 'number', description: 'Maximum path length (default 3)' },
         minStake: { type: 'number', description: 'Minimum stake threshold (default 0)' },
@@ -253,15 +266,33 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
     case 'compute_composite_score': {
       const address = args.address as string;
       const fromAddress = args.fromAddress as string | undefined;
-      const result = await computeCompositeScore(address, fromAddress);
+      const etW = typeof args.eigentrustWeight === 'number' ? args.eigentrustWeight : undefined;
+      const arW = typeof args.agentRankWeight === 'number' ? args.agentRankWeight : undefined;
+      const ttW = typeof args.transitiveTrustWeight === 'number' ? args.transitiveTrustWeight : undefined;
+      const predicateWeights = (args.predicateWeights && typeof args.predicateWeights === 'object' && !Array.isArray(args.predicateWeights))
+        ? args.predicateWeights as Record<string, number>
+        : undefined;
+      const hasWeightOverrides = etW !== undefined || arW !== undefined || ttW !== undefined;
+      const config = (hasWeightOverrides || predicateWeights !== undefined)
+        ? {
+            ...(hasWeightOverrides && {
+              weights: { eigentrust: etW ?? 0.4, agentrank: arW ?? 0.3, transitiveTrust: ttW ?? 0.3 },
+            }),
+            ...(predicateWeights !== undefined && { predicateWeights }),
+          }
+        : undefined;
+      const result = await computeCompositeScore(address, fromAddress, config);
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     }
     case 'compute_personalized_trust': {
       const predicateWeights = (args.predicateWeights && typeof args.predicateWeights === 'object' && !Array.isArray(args.predicateWeights))
         ? args.predicateWeights as Record<string, number>
         : undefined;
+      const fromAddress = Array.isArray(args.fromAddress)
+        ? args.fromAddress as string[]
+        : args.fromAddress as string;
       const result = await computePersonalizedTrust({
-        fromAddress: args.fromAddress as string,
+        fromAddress,
         toAddress: args.toAddress as string,
         maxHops: typeof args.maxHops === 'number' ? args.maxHops : 3,
         minStake: typeof args.minStake === 'number' ? args.minStake : 0,
@@ -326,14 +357,18 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
       };
     }
     case 'get_sync_status': {
-      // Combine in-memory cron state with the persisted lastSyncedAt timestamp
-      // so the last-sync time survives server restarts.
+      // Combine in-memory cron state with persisted Meta node fields so the
+      // response survives server restarts.
       const status = getSyncStatus();
       const graphStats = await getGraphStats();
       const combined = {
         isRunning: status.isRunning,
         nextRun: status.nextRun,
         lastSyncedAt: graphStats.lastSyncedAt ?? null,
+        lastSyncStatus: graphStats.lastSyncStatus ?? null,
+        lastSyncDurationMs: graphStats.lastSyncDurationMs ?? null,
+        lastSyncNodesCreated: graphStats.lastSyncNodesCreated ?? null,
+        lastSyncEdgesCreated: graphStats.lastSyncEdgesCreated ?? null,
         lastRunSuccess: status.lastRunSuccess,
       };
       return {
