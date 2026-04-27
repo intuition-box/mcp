@@ -134,6 +134,10 @@ export async function getGraphStats(): Promise<{
   attestationCount: number;
   predicateDistribution: Record<string, number>;
   lastSyncedAt: string | null;
+  lastSyncStatus: string | null;
+  lastSyncDurationMs: number | null;
+  lastSyncNodesCreated: number | null;
+  lastSyncEdgesCreated: number | null;
 }> {
   const session = getSession();
 
@@ -154,7 +158,11 @@ export async function getGraphStats(): Promise<{
 
     const metaResult = await session.run(`
       OPTIONAL MATCH (m:Meta {key: 'sync'})
-      RETURN m.lastSyncedAt AS lastSyncedAt
+      RETURN m.lastSyncedAt AS lastSyncedAt,
+             m.lastSyncStatus AS lastSyncStatus,
+             m.lastSyncDurationMs AS lastSyncDurationMs,
+             m.lastSyncNodesCreated AS lastSyncNodesCreated,
+             m.lastSyncEdgesCreated AS lastSyncEdgesCreated
     `);
 
     const counts = countResult.records[0];
@@ -166,14 +174,33 @@ export async function getGraphStats(): Promise<{
       predicateDistribution[predicate] = count;
     }
 
-    const lastSyncedAt: string | null =
-      metaResult.records[0]?.get('lastSyncedAt') ?? null;
+    const metaRecord = metaResult.records[0];
+    const lastSyncedAt: string | null = metaRecord?.get('lastSyncedAt') ?? null;
+    const lastSyncStatus: string | null = metaRecord?.get('lastSyncStatus') ?? null;
+
+    const toNullableNumber = (value: unknown): number | null => {
+      if (value === null || value === undefined) return null;
+      if (typeof value === 'number') return value;
+      if (typeof value === 'object' && value !== null && 'toNumber' in value && typeof (value as { toNumber: unknown }).toNumber === 'function') {
+        return (value as { toNumber: () => number }).toNumber();
+      }
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+
+    const lastSyncDurationMs = toNullableNumber(metaRecord?.get('lastSyncDurationMs'));
+    const lastSyncNodesCreated = toNullableNumber(metaRecord?.get('lastSyncNodesCreated'));
+    const lastSyncEdgesCreated = toNullableNumber(metaRecord?.get('lastSyncEdgesCreated'));
 
     return {
       addressCount: counts.get('addressCount').toNumber(),
       attestationCount: counts.get('attestationCount').toNumber(),
       predicateDistribution,
       lastSyncedAt,
+      lastSyncStatus,
+      lastSyncDurationMs,
+      lastSyncNodesCreated,
+      lastSyncEdgesCreated,
     };
   } finally {
     await session.close();

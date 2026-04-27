@@ -121,13 +121,27 @@ export async function runSync(options: {
 
     result.nodesCreated = totalNodes;
     result.edgesCreated = totalEdges;
+    result.duration = Date.now() - startTime;
 
-    // Write sync timestamp to Neo4j
+    // Write sync metadata to Neo4j. Duration is captured here (before the bottom
+    // guard) so the persisted value reflects the actual sync time on success.
     const metaSession = getSession();
     try {
+      const status = result.errors.length === 0 ? 'success' : 'error';
       await metaSession.run(
-        `MERGE (m:Meta {key: 'sync'}) SET m.lastSyncedAt = $now`,
-        { now: new Date().toISOString() }
+        `MERGE (m:Meta {key: 'sync'})
+         SET m.lastSyncedAt = $now,
+             m.lastSyncStatus = $status,
+             m.lastSyncDurationMs = $durationMs,
+             m.lastSyncNodesCreated = $nodesCreated,
+             m.lastSyncEdgesCreated = $edgesCreated`,
+        {
+          now: new Date().toISOString(),
+          status,
+          durationMs: result.duration,
+          nodesCreated: result.nodesCreated,
+          edgesCreated: result.edgesCreated,
+        }
       );
     } finally {
       await metaSession.close();
