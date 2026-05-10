@@ -357,8 +357,11 @@ hopTrust[i] = normalizeStake(stakeAmount) * predicateWeight * decayFactor^i
 ```
 
 Where:
-- `normalizeStake(stake) = log(stake + 1) / log(1e18)` -- logarithmic normalization
-  that maps raw stake (in wei) to [0, 1] with diminishing returns
+- `normalizeStake(stake) = log(stake + 1) / log(100)` -- logarithmic normalization
+  that maps ETH-scale decimal stake to [0, 1] with diminishing returns. Stakes
+  at or above 100 ETH saturate to 1.0. Hops with `stake <= 0` use a small floor
+  weight (`0.1`) instead so that a single unstaked attestation does not zero the
+  entire multiplicative path.
 - `predicateWeight` is looked up from the predicate registry (custom overrides supported)
 - `decayFactor^i` reduces trust exponentially with distance
 

@@ -14,6 +14,7 @@ vi.mock('../../config/neo4j.js', () => ({
   }),
   initializeDriver: vi.fn(),
   verifyConnection: vi.fn().mockResolvedValue(true),
+  setNeo4jAvailable: vi.fn(),
   closeDriver: vi.fn(),
   getSession: () => ({ run: mockRun, close: mockClose }),
 }));

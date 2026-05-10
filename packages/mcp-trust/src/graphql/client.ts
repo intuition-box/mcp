@@ -111,7 +111,10 @@ export async function* fetchAllTriples(
     yield triples;
 
     pageCount++;
-    offset += pageSize;
+    // Advance by what the server actually returned, not what we asked for.
+    // The server caps responses (observed at 250) regardless of requested limit;
+    // incrementing by pageSize would skip the rows the server didn't include.
+    offset += triples.length;
     hasMore = triples.length > 0 && offset < totalCount;
 
     log('info', `Fetched page ${pageCount}`, {

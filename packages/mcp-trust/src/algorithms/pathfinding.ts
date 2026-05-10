@@ -24,10 +24,20 @@ import {
 const MAX_PATHS_LIMIT = 1000;
 
 /**
- * Base value for log-scale stake normalization
- * Stakes are normalized as: log(stake + 1) / log(STAKE_LOG_BASE)
+ * Base value for log-scale stake normalization.
+ * Stakes are stored as ETH-scale decimals (the indexer divides by 1e18 at
+ * write time), so the saturation point is set to 100 ETH — stakes at or
+ * above this map to weight 1.0, with diminishing returns below.
+ * Formula: log(stake + 1) / log(STAKE_LOG_BASE)
  */
-const STAKE_LOG_BASE = 1e18;
+const STAKE_LOG_BASE = 100;
+
+/**
+ * Floor weight applied to hops with stake <= 0. Path trust is multiplicative
+ * across hops, so without a floor a single unstaked attestation (which still
+ * represents a real assertion) would zero the entire path.
+ */
+const UNSTAKED_HOP_WEIGHT = 0.1;
 
 // ============ Path Finding Functions ============
 
@@ -220,8 +230,9 @@ export function calculatePathTrust(
     const predicate = path.predicates[i];
     const stake = path.stakes[i];
 
-    // Normalize stake using log scale
-    const stakeWeight = normalizeStake(stake);
+    // Normalize stake using log scale; floor unstaked hops so they don't
+    // zero the multiplicative path trust.
+    const stakeWeight = stake > 0 ? normalizeStake(stake) : UNSTAKED_HOP_WEIGHT;
 
     // Get predicate weight (custom override falls back to constants.ts default)
     const predicateWeight = predicateWeights?.[predicate] ?? getPredicateWeight(predicate);

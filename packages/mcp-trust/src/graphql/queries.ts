@@ -14,6 +14,7 @@ export const GET_TRIPLES_QUERY = gql`
     triples(
       limit: $limit
       offset: $offset
+      order_by: { term_id: asc }
     ) {
       term_id
       subject_id

@@ -198,6 +198,9 @@ function ErrorIcon({ className }: { className?: string }) {
 const FIELD_PLACEHOLDERS: Record<string, string> = {
   'get-account-info::address': 'e.g. 0xC3FBd93fCb4c12FB159424A3B0d6E30b0e8c364D',
   'get_account_info::address': 'e.g. 0xC3FBd93fCb4c12FB159424A3B0d6E30b0e8c364D',
+  'compute_composite_score::predicateWeights': 'trust, follow, distrust',
+  'compute_personalized_trust::predicateWeights': 'trust, follow, distrust',
+  'find_trust_paths::predicateWeights': 'trust, follow, distrust',
 };
 
 function getFieldPlaceholder(
@@ -291,10 +294,19 @@ function ToolCard({
         } else if (prop.type === 'boolean') {
           args[key] = value === 'true';
         } else if (prop.type === 'object') {
-          try {
-            args[key] = JSON.parse(value);
-          } catch {
-            throw new Error(`"${key}" must be valid JSON`);
+          const trimmed = value.trim();
+          if (key === 'predicateWeights' && !trimmed.startsWith('{')) {
+            // Accept "trust, follow, distrust" -> { trust: 1, follow: 1, distrust: 1 }.
+            // JSON object form is still honoured for explicit per-predicate weights.
+            const names = trimmed.split(',').map((s) => s.trim()).filter(Boolean);
+            if (names.length === 0) continue;
+            args[key] = Object.fromEntries(names.map((n) => [n, 1]));
+          } else {
+            try {
+              args[key] = JSON.parse(value);
+            } catch {
+              throw new Error(`"${key}" must be valid JSON`);
+            }
           }
         } else if (prop.type === 'array') {
           // Auto-wrap plain text input into a JSON array.
@@ -528,6 +540,11 @@ function ToolCard({
                         {tool.name === 'run_sync' && key === 'maxPages' && lastSyncedAt && (
                           <p className="mt-1 text-[11px] text-gray-400">
                             Last synced: {lastSyncedAt}
+                          </p>
+                        )}
+                        {key === 'predicateWeights' && (
+                          <p className="mt-1 text-[11px] text-gray-400">
+                            comma separated — leave empty to use all predicates
                           </p>
                         )}
                       </>

@@ -217,7 +217,7 @@ const TRUST_TOOLS = [
       properties: {
         maxPages: {
           type: 'number',
-          description: 'Maximum pages to fetch (default: 10, max recommended: 50)',
+          description: 'Maximum pages to fetch (default: 50)',
         },
       },
       additionalProperties: false,
@@ -400,7 +400,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
       }
       isSyncRunning = true;
       try {
-        const maxPages = typeof args.maxPages === 'number' ? args.maxPages : 10;
+        const maxPages = typeof args.maxPages === 'number' ? args.maxPages : 50;
         // clearFirst is intentionally hardcoded to false. It wipes the entire
         // Neo4j graph and must never be triggered from a public-facing tool.
         // Re-add behind an auth gate if an admin-only variant is needed.

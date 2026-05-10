@@ -144,7 +144,7 @@ describe('calculatePathTrust', () => {
     expect(trust).toBeLessThanOrEqual(1);
   });
 
-  it('returns 0 for zero-stake path', () => {
+  it('applies unstaked-hop floor weight when stake is zero', () => {
     const path: TrustPath = {
       addresses: ['0xA', '0xB'],
       predicates: ['trusts'],
@@ -152,7 +152,20 @@ describe('calculatePathTrust', () => {
       totalDecay: 0.6,
     };
 
-    expect(calculatePathTrust(path)).toBe(0);
+    // floor (0.1) * predicateWeight('trusts')=1.0 * decay^0=1.0
+    expect(calculatePathTrust(path)).toBeCloseTo(0.1, 10);
+  });
+
+  it('preserves trust on multi-hop paths where one hop is unstaked', () => {
+    const stake = 1e15;
+    const path: TrustPath = {
+      addresses: ['0xA', '0xB', '0xC'],
+      predicates: ['trusts', 'trusts'],
+      stakes: [stake, 0],
+      totalDecay: 0.36,
+    };
+
+    expect(calculatePathTrust(path)).toBeGreaterThan(0);
   });
 
   it('handles custom decay factor', () => {
@@ -193,17 +206,18 @@ describe('normalizeStake', () => {
   });
 
   it('increases monotonically with stake', () => {
-    const small = normalizeStake(100);
-    const medium = normalizeStake(1e9);
-    const large = normalizeStake(1e15);
+    // Use sub-saturation ETH-scale values so each step is visible.
+    const small = normalizeStake(0.1);
+    const medium = normalizeStake(1);
+    const large = normalizeStake(10);
 
     expect(medium).toBeGreaterThan(small);
     expect(large).toBeGreaterThan(medium);
   });
 
-  it('approaches 1.0 near the log base (1e18)', () => {
-    // log(1e18 + 1) / log(1e18) should be very close to 1
-    const nearBase = normalizeStake(1e18);
+  it('approaches 1.0 at the log base (100 ETH)', () => {
+    // log(100 + 1) / log(100) should be very close to 1
+    const nearBase = normalizeStake(100);
     expect(nearBase).toBeCloseTo(1.0, 1);
   });
 });

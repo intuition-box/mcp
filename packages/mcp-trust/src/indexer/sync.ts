@@ -3,10 +3,12 @@
  */
 
 import 'dotenv/config';
+import { pathToFileURL } from 'node:url';
 import {
   loadConfig,
   initializeDriver,
   verifyConnection,
+  setNeo4jAvailable,
   closeDriver,
   getSession
 } from '../config/neo4j.js';
@@ -54,6 +56,7 @@ export async function runSync(options: {
     if (!connected) {
       throw new Error('Failed to verify Neo4j connection');
     }
+    setNeo4jAvailable(true);
     log('info', 'Neo4j connection verified');
 
     // Setup schema
@@ -176,10 +179,11 @@ export async function runSync(options: {
   return result;
 }
 
-// Run sync if executed directly
-const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+// Run sync if executed directly. pathToFileURL handles Windows path semantics
+// (e.g. C:\foo\bar -> file:///C:/foo/bar) so the equality holds cross-platform.
+const isMainModule = import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMainModule) {
-  runSync({ maxPages: 10 })
+  runSync({ maxPages: 50 })
     .then(result => {
       if (result.errors.length > 0) {
         process.exit(1);

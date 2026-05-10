@@ -23,6 +23,10 @@ export const TRUST_PREDICATES: Record<string, PredicateEntry> = {
     termId: '0x3a73f3b1613d166eea141a25a2adc70db9304ab3c4e90daecad05f86487c3ee9',
     weight: 1.0,
   },
+  trust: {
+    termId: null,
+    weight: 1.0,
+  },
   distrust: {
     termId: '0x93dd055a971886b66c5f4d9c29098ebdd9b7991890b6372a7e184c64321c9710',
     weight: -0.5,
