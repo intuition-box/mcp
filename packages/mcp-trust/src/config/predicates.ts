@@ -35,6 +35,14 @@ export const TRUST_PREDICATES: Record<string, PredicateEntry> = {
     termId: null,
     weight: 0.7,
   },
+  'interacted with': {
+    termId: null,
+    weight: 0.5,
+  },
+  'collaborates with': {
+    termId: null,
+    weight: 0.6,
+  },
   'visits for work': {
     termId: '0x73872e1840362760d0144599493fc6f22ec5042f85ae7b8904576999a189d76b',
     weight: 0.4,
