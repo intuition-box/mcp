@@ -533,6 +533,12 @@ function ToolCard({
                           type={inputType}
                           value={formValues[key] ?? ''}
                           onChange={(e) => updateField(key, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !loading) {
+                              e.preventDefault();
+                              handleRun();
+                            }
+                          }}
                           disabled={loading}
                           placeholder={getFieldPlaceholder(tool.name, key, prop, isRequired)}
                           className="h-9 text-sm"
