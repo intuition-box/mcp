@@ -106,3 +106,11 @@ export {
   computeTrustWithDecay,
   getDirectTrust,
 } from './personalized.js';
+
+// Batch trust scoring
+export type {
+  AnchorScore,
+  BatchTrustEntry,
+  BatchComputeTrustResult,
+} from './batch-trust.js';
+export { batchComputeTrust } from './batch-trust.js';

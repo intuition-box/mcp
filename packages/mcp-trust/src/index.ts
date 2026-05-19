@@ -30,10 +30,13 @@ import { initializeGraphQLClient } from './graphql/client.js';
 import { setupSchema } from './graph/schema.js';
 import {
   getGraphStats,
-  getAttestationsForAddress
+  getAttestationsForAddress,
+  getNetworkGraph,
 } from './graph/queries.js';
 import { runSync } from './indexer/sync.js';
 import { log } from './utils/logger.js';
+import { parseAddressList } from './utils/parse-addresses.js';
+import { computeSyncHealth } from './utils/sync-health.js';
 import {
   computeEigenTrust,
   computeAgentRank,
@@ -42,9 +45,11 @@ import {
   computePersonalizedTrust,
   computePersonalizedTrustNetwork,
   findTrustPaths,
+  batchComputeTrust,
   TrustScore,
 } from './algorithms/index.js';
 import { TRUST_PREDICATES, DEFAULT_WEIGHTS } from './config/predicates.js';
+import { getLensRegistry } from './lenses/index.js';
 import { startCronSync, stopCronSync, getSyncStatus } from './cron.js';
 
 // Concurrency guard for the run_sync MCP tool. Prevents a client-triggered
@@ -222,6 +227,54 @@ const TRUST_TOOLS = [
       },
       additionalProperties: false,
     },
+  },
+  {
+    name: 'batch_compute_trust',
+    description: 'Compute composite trust scores for many targets from the perspective of one or more anchor addresses. Each target receives a score that is the mean of the per-anchor composite scores. Accepts addresses as a JSON array, a comma-separated string, or a space-separated string.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        anchors: {
+          oneOf: [
+            { type: 'string', description: 'Comma/space-separated or JSON-array string of anchor addresses' },
+            { type: 'array', items: { type: 'string' }, description: 'Array of anchor addresses' },
+          ],
+          description: 'Trust anchors (sources). When empty, returns un-personalized composite scores.',
+        },
+        targets: {
+          oneOf: [
+            { type: 'string', description: 'Comma/space-separated or JSON-array string of target addresses' },
+            { type: 'array', items: { type: 'string' }, description: 'Array of target addresses' },
+          ],
+          description: 'Addresses to score against the anchor set.',
+        },
+      },
+      required: ['targets'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'get_network_graph',
+    description: 'Return the trust subgraph reachable from `address` within `maxHops` ATTESTS edges. Output is structured for graph visualization: { nodes: [{id, label}], edges: [{from, to, predicate, stake}] }.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        address: { type: 'string', description: 'Root address to expand from' },
+        maxHops: { type: 'number', description: 'Traversal depth, integer 1-5 (default 2)' },
+      },
+      required: ['address'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'get_lens_registry',
+    description: 'Return the list of available trust lenses. Each lens is a named preset describing predicate filters, stake thresholds, recency cutoffs, and (for context lenses like "social" / "professional") predicate weight overrides.',
+    inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'get_sync_health',
+    description: 'Return detailed sync health: lastSyncedAt, lastSyncStatus, nodeCount, edgeCount, lastSyncDurationMs, top-10 predicate distribution, and a derived health field ("healthy" within 24h with no errors, "degraded" on errors, "stale" if older than 24h, "unknown" if never synced).',
+    inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false },
   },
 ] as const;
 
@@ -414,6 +467,94 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
       } finally {
         isSyncRunning = false;
       }
+    }
+    case 'batch_compute_trust': {
+      const anchors = parseAddressList(args.anchors);
+      const targets = parseAddressList(args.targets);
+      if (targets.length === 0) {
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              error: 'targets is required and must contain at least one address',
+            }),
+          }],
+          isError: true,
+        };
+      }
+      const result = await batchComputeTrust(anchors, targets);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    }
+    case 'get_network_graph': {
+      const address = args.address;
+      if (typeof address !== 'string' || address.length === 0) {
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({ error: 'address is required and must be a non-empty string' }),
+          }],
+          isError: true,
+        };
+      }
+      const maxHops = typeof args.maxHops === 'number' ? args.maxHops : 2;
+      const graph = await getNetworkGraph(address, maxHops);
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            address,
+            maxHops,
+            nodeCount: graph.nodes.length,
+            edgeCount: graph.edges.length,
+            nodes: graph.nodes,
+            edges: graph.edges,
+          }, null, 2),
+        }],
+      };
+    }
+    case 'get_lens_registry': {
+      const lenses = getLensRegistry();
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({ count: lenses.length, lenses }, null, 2),
+        }],
+      };
+    }
+    case 'get_sync_health': {
+      const cronStatus = getSyncStatus();
+      const stats = await getGraphStats();
+      const health = computeSyncHealth({
+        lastSyncedAt: stats.lastSyncedAt,
+        lastSyncStatus: stats.lastSyncStatus,
+      });
+
+      const sortedPredicates = Object.entries(stats.predicateDistribution)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+      const predicateDistributionTop10: Record<string, number> = Object.fromEntries(sortedPredicates);
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            health,
+            lastSyncedAt: stats.lastSyncedAt,
+            lastSyncStatus: stats.lastSyncStatus,
+            lastSyncDurationMs: stats.lastSyncDurationMs,
+            lastSyncNodesCreated: stats.lastSyncNodesCreated,
+            lastSyncEdgesCreated: stats.lastSyncEdgesCreated,
+            nodeCount: stats.addressCount,
+            edgeCount: stats.attestationCount,
+            predicateDistributionTop10,
+            cron: {
+              isRunning: cronStatus.isRunning,
+              nextRun: cronStatus.nextRun,
+              lastRunSuccess: cronStatus.lastRunSuccess,
+            },
+          }, null, 2),
+        }],
+      };
     }
     default:
       throw new Error(`Unknown tool: ${name}`);

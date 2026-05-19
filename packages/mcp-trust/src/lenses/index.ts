@@ -33,6 +33,13 @@ export interface TrustLens {
   maxAgeDays?: number;
   /** Scope to edges where both from and to are in this set */
   addressFilter?: string[];
+  /**
+   * Per-predicate weight overrides used by personalized / composite trust
+   * computations performed under this lens. Unlike predicateFilter (which
+   * removes edges entirely), predicateWeights re-weight them.
+   * Keys are predicate names, values are numeric weights.
+   */
+  predicateWeights?: Record<string, number>;
 }
 
 // ============ Built-in Lenses ============
@@ -70,6 +77,54 @@ export const LENS_RECENT: TrustLens = {
   maxAgeDays: 90,
 };
 
+/**
+ * Social-context lens. Boosts personal-relationship signals (trusts, follow,
+ * interacted with) and de-prioritizes work / utility predicates.
+ */
+export const LENS_SOCIAL: TrustLens = {
+  id: 'social',
+  name: 'Social',
+  description: 'Weights social signals (trusts, follow, interacted with) higher than utility / work signals.',
+  predicateWeights: {
+    trusts: 1.0,
+    trust: 1.0,
+    follow: 0.9,
+    'interacted with': 0.7,
+    'collaborates with': 0.4,
+    'visits for fun': 0.4,
+    'visits for inspiration': 0.4,
+    'visits for music': 0.4,
+    'visits for learning ': 0.3,
+    'visits for work': 0.15,
+    'visits for buying': 0.1,
+    distrust: -0.5,
+  },
+};
+
+/**
+ * Professional-context lens. Boosts work-relationship signals (collaborates
+ * with, visits for work) and de-prioritizes purely social predicates.
+ */
+export const LENS_PROFESSIONAL: TrustLens = {
+  id: 'professional',
+  name: 'Professional',
+  description: 'Weights professional signals (collaborates with, visits for work) higher than purely social signals.',
+  predicateWeights: {
+    'collaborates with': 1.0,
+    'visits for work': 0.9,
+    trusts: 0.7,
+    trust: 0.7,
+    'visits for learning ': 0.6,
+    'interacted with': 0.4,
+    follow: 0.3,
+    'visits for inspiration': 0.3,
+    'visits for buying': 0.2,
+    'visits for fun': 0.1,
+    'visits for music': 0.1,
+    distrust: -0.5,
+  },
+};
+
 // ============ Registry ============
 
 const BUILT_IN_LENSES: readonly TrustLens[] = [
@@ -77,6 +132,8 @@ const BUILT_IN_LENSES: readonly TrustLens[] = [
   LENS_TRUST_ONLY,
   LENS_HIGH_CONVICTION,
   LENS_RECENT,
+  LENS_SOCIAL,
+  LENS_PROFESSIONAL,
 ];
 
 /**

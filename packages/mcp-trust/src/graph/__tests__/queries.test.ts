@@ -5,6 +5,7 @@ import {
   upsertAddresses,
   upsertAttestations,
   clearGraph,
+  getNetworkGraph,
 } from '../queries.js';
 import type { AddressNode, AttestationEdge } from '../../types/index.js';
 
@@ -448,6 +449,139 @@ describe('clearGraph', () => {
     mockRun.mockRejectedValueOnce(new Error('Permission denied'));
 
     await expect(clearGraph()).rejects.toThrow('Permission denied');
+    expect(mockClose).toHaveBeenCalledOnce();
+  });
+});
+
+// ============ getNetworkGraph ============
+
+describe('getNetworkGraph', () => {
+  function nodeRecord(id: string, label: string | null) {
+    return {
+      get: (key: string) => {
+        if (key === 'id') return id;
+        if (key === 'label') return label;
+        return null;
+      },
+    };
+  }
+
+  function edgeRecord(
+    from: string,
+    to: string,
+    predicate: string,
+    stake: number | { toNumber: () => number } | null,
+  ) {
+    return {
+      get: (key: string) => {
+        if (key === 'from') return from;
+        if (key === 'to') return to;
+        if (key === 'predicate') return predicate;
+        if (key === 'stake') return stake;
+        return null;
+      },
+    };
+  }
+
+  it('rejects non-integer maxHops', async () => {
+    await expect(getNetworkGraph('0xabc', 1.5)).rejects.toThrow(/integer between 1 and 5/);
+    expect(mockRun).not.toHaveBeenCalled();
+  });
+
+  it('rejects maxHops below 1', async () => {
+    await expect(getNetworkGraph('0xabc', 0)).rejects.toThrow(/integer between 1 and 5/);
+  });
+
+  it('rejects maxHops above 5', async () => {
+    await expect(getNetworkGraph('0xabc', 6)).rejects.toThrow(/integer between 1 and 5/);
+  });
+
+  it('returns empty graph when start node not found', async () => {
+    mockRun.mockResolvedValueOnce({ records: [] });
+
+    const result = await getNetworkGraph('0xMISSING', 2);
+
+    expect(result).toEqual({ nodes: [], edges: [] });
+    // Only the nodes query runs; we short-circuit before the edges query.
+    expect(mockRun).toHaveBeenCalledOnce();
+    expect(mockClose).toHaveBeenCalledOnce();
+  });
+
+  it('returns nodes plus edges between them', async () => {
+    mockRun.mockResolvedValueOnce({
+      records: [
+        nodeRecord('0xa', 'Alice'),
+        nodeRecord('0xb', 'Bob'),
+        nodeRecord('0xc', null),
+      ],
+    });
+    mockRun.mockResolvedValueOnce({
+      records: [
+        edgeRecord('0xa', '0xb', 'trusts', { toNumber: () => 100 }),
+        edgeRecord('0xb', '0xc', 'follow', 50),
+      ],
+    });
+
+    const result = await getNetworkGraph('0xA', 2);
+
+    expect(result.nodes).toEqual([
+      { id: '0xa', label: 'Alice' },
+      { id: '0xb', label: 'Bob' },
+      { id: '0xc', label: null },
+    ]);
+    expect(result.edges).toEqual([
+      { from: '0xa', to: '0xb', predicate: 'trusts', stake: 100 },
+      { from: '0xb', to: '0xc', predicate: 'follow', stake: 50 },
+    ]);
+    expect(mockClose).toHaveBeenCalledOnce();
+  });
+
+  it('lowercases the address parameter before querying', async () => {
+    mockRun.mockResolvedValueOnce({
+      records: [nodeRecord('0xaabbcc', null)],
+    });
+    mockRun.mockResolvedValueOnce({ records: [] });
+
+    await getNetworkGraph('0xAABBCC', 1);
+
+    const nodesParams = mockRun.mock.calls[0][1] as { address: string };
+    expect(nodesParams.address).toBe('0xaabbcc');
+  });
+
+  it('inlines maxHops into the Cypher pattern', async () => {
+    mockRun.mockResolvedValueOnce({ records: [nodeRecord('0xa', null)] });
+    mockRun.mockResolvedValueOnce({ records: [] });
+
+    await getNetworkGraph('0xa', 3);
+
+    const nodesQuery = mockRun.mock.calls[0][0] as string;
+    expect(nodesQuery).toContain('ATTESTS*1..3');
+  });
+
+  it('handles missing predicate by defaulting to "unknown"', async () => {
+    mockRun.mockResolvedValueOnce({ records: [nodeRecord('0xa', null), nodeRecord('0xb', null)] });
+    mockRun.mockResolvedValueOnce({
+      records: [edgeRecord('0xa', '0xb', null as unknown as string, 10)],
+    });
+
+    const result = await getNetworkGraph('0xa', 1);
+    expect(result.edges[0].predicate).toBe('unknown');
+  });
+
+  it('coerces null stake to 0', async () => {
+    mockRun.mockResolvedValueOnce({ records: [nodeRecord('0xa', null), nodeRecord('0xb', null)] });
+    mockRun.mockResolvedValueOnce({
+      records: [edgeRecord('0xa', '0xb', 'trusts', null)],
+    });
+
+    const result = await getNetworkGraph('0xa', 1);
+    expect(result.edges[0].stake).toBe(0);
+  });
+
+  it('closes session on error', async () => {
+    mockRun.mockRejectedValueOnce(new Error('Query failed'));
+
+    await expect(getNetworkGraph('0xa', 1)).rejects.toThrow('Query failed');
     expect(mockClose).toHaveBeenCalledOnce();
   });
 });

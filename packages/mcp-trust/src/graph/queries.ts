@@ -207,6 +207,114 @@ export async function getGraphStats(): Promise<{
   }
 }
 
+// ============ Network graph (for visualization) ============
+
+export interface NetworkGraphNode {
+  id: string;
+  label: string | null;
+}
+
+export interface NetworkGraphEdge {
+  from: string;
+  to: string;
+  predicate: string;
+  stake: number;
+}
+
+export interface NetworkGraph {
+  nodes: NetworkGraphNode[];
+  edges: NetworkGraphEdge[];
+}
+
+const MAX_NETWORK_HOPS = 5;
+
+function neoNumberToNumber(value: unknown): number {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === 'number') return value;
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    'toNumber' in value &&
+    typeof (value as { toNumber: unknown }).toNumber === 'function'
+  ) {
+    return (value as { toNumber: () => number }).toNumber();
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Return every address reachable from `address` within `maxHops` ATTESTS
+ * edges (in either direction), plus all ATTESTS edges whose endpoints both
+ * sit inside that reachable set. Intended for client-side graph rendering.
+ *
+ * maxHops is clamped to 1..MAX_NETWORK_HOPS and inlined into the Cypher
+ * pattern -- variable-length pattern depth cannot be parameterized, so we
+ * validate strictly before interpolation.
+ */
+export async function getNetworkGraph(
+  address: string,
+  maxHops: number,
+): Promise<NetworkGraph> {
+  if (!Number.isInteger(maxHops) || maxHops < 1 || maxHops > MAX_NETWORK_HOPS) {
+    throw new Error(
+      `maxHops must be an integer between 1 and ${MAX_NETWORK_HOPS} (got ${maxHops})`,
+    );
+  }
+
+  const normalized = address.toLowerCase();
+  const session = getSession();
+
+  try {
+    const nodesResult = await session.run(
+      `
+      MATCH (start:Address {id: $address})
+      OPTIONAL MATCH (start)-[:ATTESTS*1..${maxHops}]-(n:Address)
+      WITH start, collect(DISTINCT n) AS neighbors
+      WITH [x IN ([start] + neighbors) WHERE x IS NOT NULL] AS allNodes
+      UNWIND allNodes AS node
+      RETURN DISTINCT node.id AS id, node.label AS label
+      `,
+      { address: normalized },
+    );
+
+    const nodes: NetworkGraphNode[] = nodesResult.records.map(r => ({
+      id: r.get('id') as string,
+      label: (r.get('label') ?? null) as string | null,
+    }));
+
+    if (nodes.length === 0) {
+      return { nodes: [], edges: [] };
+    }
+
+    const ids = nodes.map(n => n.id);
+
+    const edgesResult = await session.run(
+      `
+      UNWIND $ids AS fromId
+      MATCH (from:Address {id: fromId})-[r:ATTESTS]->(to:Address)
+      WHERE to.id IN $ids
+      RETURN from.id AS from,
+             to.id AS to,
+             r.predicate AS predicate,
+             r.stakeAmount AS stake
+      `,
+      { ids },
+    );
+
+    const edges: NetworkGraphEdge[] = edgesResult.records.map(r => ({
+      from: r.get('from') as string,
+      to: r.get('to') as string,
+      predicate: (r.get('predicate') ?? 'unknown') as string,
+      stake: neoNumberToNumber(r.get('stake')),
+    }));
+
+    return { nodes, edges };
+  } finally {
+    await session.close();
+  }
+}
+
 /**
  * Clear all data from the graph (use with caution)
  */
