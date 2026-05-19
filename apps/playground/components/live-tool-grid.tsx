@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Card,
   CardHeader,
@@ -357,6 +357,31 @@ function ToolCard({
     }
   }
 
+  // Stable ref so the document listener always invokes the latest handleRun
+  // (captures current formValues without re-attaching the listener each render).
+  const handleRunRef = useRef<() => void>(() => {});
+  handleRunRef.current = handleRun;
+
+  // Document-level Enter -> Run, active only while this tool is expanded and idle.
+  useEffect(() => {
+    if (!expanded || loading) return;
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'Enter') return;
+      if (e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      // Let textarea / contenteditable handle Enter as a newline.
+      if (target?.tagName === 'TEXTAREA' || target?.isContentEditable) return;
+      // Don't hijack Enter on other buttons (e.g. Cancel, Close).
+      if (target?.tagName === 'BUTTON') return;
+      e.preventDefault();
+      handleRunRef.current();
+    }
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [expanded, loading]);
+
   // Extract display text from MCP tool result
   function getResultDisplay(): { text: string; isError: boolean } {
     if (!result) return { text: '', isError: false };
@@ -533,12 +558,6 @@ function ToolCard({
                           type={inputType}
                           value={formValues[key] ?? ''}
                           onChange={(e) => updateField(key, e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !loading) {
-                              e.preventDefault();
-                              handleRun();
-                            }
-                          }}
                           disabled={loading}
                           placeholder={getFieldPlaceholder(tool.name, key, prop, isRequired)}
                           className="h-9 text-sm"
