@@ -48,6 +48,34 @@ function mockGraphData(
     });
 }
 
+// Variant: lets each edge supply stakeAmount as any unknown type
+// (Neo4j Integer, string, boolean, null, etc.) so extractNumber's
+// branches are exercised end-to-end.
+function mockGraphDataRaw(
+  addresses: string[],
+  edges: { from: string; to: string; stakeAmount: unknown; predicate: string }[],
+) {
+  mockRun
+    .mockResolvedValueOnce({
+      records: addresses.map(id => ({
+        get: (key: string) => (key === 'id' ? id : null),
+      })),
+    })
+    .mockResolvedValueOnce({
+      records: edges.map(e => ({
+        get: (key: string) => {
+          switch (key) {
+            case 'fromId': return e.from;
+            case 'toId': return e.to;
+            case 'stakeAmount': return e.stakeAmount;
+            case 'predicate': return e.predicate;
+            default: return null;
+          }
+        },
+      })),
+    });
+}
+
 // ============ computeAgentRank ============
 
 describe('computeAgentRank', () => {
@@ -223,6 +251,92 @@ describe('computeAgentRank', () => {
     expect(result.computationTimeMs).toBeGreaterThanOrEqual(0);
     expect(typeof result.computationTimeMs).toBe('number');
   });
+
+  it('extracts stakeAmount from Neo4j Integer-like objects (toNumber)', async () => {
+    // Simulate the Neo4j driver returning Integer instances which expose toNumber()
+    const neo4jInt = { toNumber: () => 250 };
+    mockGraphDataRaw(['0xA', '0xB'], [
+      { from: '0xA', to: '0xB', stakeAmount: neo4jInt, predicate: 'trusts' },
+    ]);
+
+    const result = await computeAgentRank();
+
+    // If toNumber wasn't called, the edge would have been skipped (weight 0)
+    // and 0xB would not have accumulated extra rank from 0xA.
+    expect(result.ranks.size).toBe(2);
+    const rankB = result.ranks.get('0xB')!;
+    expect(rankB).toBeGreaterThan(0);
+  });
+
+  it('extracts stakeAmount from numeric strings (parseFloat path)', async () => {
+    mockGraphDataRaw(['0xA', '0xB'], [
+      { from: '0xA', to: '0xB', stakeAmount: '175.5', predicate: 'trusts' },
+    ]);
+
+    const result = await computeAgentRank();
+
+    expect(result.ranks.size).toBe(2);
+    expect(result.ranks.get('0xB')!).toBeGreaterThan(0);
+  });
+
+  it('falls back to 0 for non-numeric strings (NaN guard)', async () => {
+    // Two edges: one valid (so the algorithm runs) and one with a garbage
+    // stakeAmount string that exercises the parseFloat -> NaN -> 0 branch.
+    mockGraphDataRaw(['0xA', '0xB', '0xC'], [
+      { from: '0xA', to: '0xB', stakeAmount: 100, predicate: 'trusts' },
+      { from: '0xB', to: '0xC', stakeAmount: 'not-a-number', predicate: 'trusts' },
+    ]);
+
+    const result = await computeAgentRank();
+
+    // Should not throw; ranks still computed for all three addresses
+    expect(result.ranks.size).toBe(3);
+  });
+
+  it('falls back to 0 for unsupported stakeAmount types (boolean)', async () => {
+    // Pair a valid edge with an edge whose stakeAmount is a boolean -- this
+    // hits the final `return 0` branch of extractNumber.
+    mockGraphDataRaw(['0xA', '0xB', '0xC'], [
+      { from: '0xA', to: '0xB', stakeAmount: 100, predicate: 'trusts' },
+      { from: '0xB', to: '0xC', stakeAmount: true, predicate: 'trusts' },
+    ]);
+
+    const result = await computeAgentRank();
+
+    expect(result.ranks.size).toBe(3);
+  });
+
+  it('falls back to 0 for null stakeAmount (first guard branch)', async () => {
+    // One valid edge so the algorithm runs; one with null stakeAmount
+    // to exercise the `value === null || value === undefined` branch.
+    mockGraphDataRaw(['0xA', '0xB', '0xC'], [
+      { from: '0xA', to: '0xB', stakeAmount: 100, predicate: 'trusts' },
+      { from: '0xB', to: '0xC', stakeAmount: null, predicate: 'trusts' },
+    ]);
+
+    const result = await computeAgentRank();
+
+    expect(result.ranks.size).toBe(3);
+  });
+
+  it('falls back to 0 for undefined stakeAmount', async () => {
+    mockGraphDataRaw(['0xA', '0xB', '0xC'], [
+      { from: '0xA', to: '0xB', stakeAmount: 100, predicate: 'trusts' },
+      { from: '0xB', to: '0xC', stakeAmount: undefined, predicate: 'trusts' },
+    ]);
+
+    const result = await computeAgentRank();
+
+    expect(result.ranks.size).toBe(3);
+  });
+
+  it('rethrows when the underlying Neo4j query fails (catch block)', async () => {
+    // The first mockRun (address query) rejects -- this exercises the
+    // try/catch wrapper in computeAgentRank that logs and rethrows.
+    mockRun.mockRejectedValueOnce(new Error('Neo4j unavailable'));
+
+    await expect(computeAgentRank()).rejects.toThrow('Neo4j unavailable');
+  });
 });
 
 // ============ buildWeightedAdjacency ============
@@ -389,6 +503,20 @@ describe('computeInfluenceMetrics', () => {
     const metrics = computeInfluenceMetrics(ranks);
 
     expect(metrics.medianRank).toBeCloseTo(0.25, 10);
+  });
+
+  it('returns zero gini and entropy when all ranks are zero (non-empty map)', () => {
+    // Non-empty ranks map but every value is 0 -- totalRank === 0 must take
+    // the false branch of the gini ternary on line 432.
+    const ranks = new Map([
+      ['0xA', 0], ['0xB', 0], ['0xC', 0],
+    ]);
+
+    const metrics = computeInfluenceMetrics(ranks);
+
+    expect(metrics.giniCoefficient).toBe(0);
+    expect(metrics.entropy).toBe(0);
+    expect(metrics.medianRank).toBe(0);
   });
 
   it('returns maximum entropy for uniform distribution', () => {

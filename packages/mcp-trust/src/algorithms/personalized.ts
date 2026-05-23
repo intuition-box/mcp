@@ -427,6 +427,7 @@ function runPersonalizedPageRank(
   sourceAddress: string
 ): Map<string, number> {
   const n = addresses.length;
+  /* c8 ignore next 3 -- buildAdjacencyFromPaths always seeds the address set with sourceAddress, so n>=1 in practice */
   if (n === 0) {
     return new Map();
   }
@@ -567,6 +568,7 @@ function buildAdjacencyFromPaths(
  * Based on path count and score consistency
  */
 function computeAggregationConfidence(trustValues: number[]): number {
+  /* c8 ignore next 3 -- aggregatePathTrust guards paths.length===0 before this call, so trustValues is always non-empty here */
   if (trustValues.length === 0) {
     return 0;
   }

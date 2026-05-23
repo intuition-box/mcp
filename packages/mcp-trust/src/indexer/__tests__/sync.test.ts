@@ -306,6 +306,50 @@ describe('runSync', () => {
     }
   });
 
+  it('sets status to error when both node and edge upserts fail (nothing created)', async () => {
+    mockFetchAllTriples.mockReturnValue(makeBatchGenerator([[makeTriple('t1')]]));
+    mockTransformTriples.mockReturnValue({
+      nodes: new Map([['0xaa', makeNode('0xaa')]]),
+      edges: [makeEdge('t1')],
+    });
+
+    // Both upserts fail -- nothing written
+    mockUpsertAddresses.mockRejectedValue(new Error('Node write failed'));
+    mockUpsertAttestations.mockRejectedValue(new Error('Edge write failed'));
+
+    mockGetGraphStats.mockResolvedValue({
+      addressCount: 0,
+      attestationCount: 0,
+      predicateDistribution: {},
+      lastSyncedAt: null,
+      lastSyncStatus: null,
+      lastSyncDurationMs: null,
+      lastSyncNodesCreated: null,
+      lastSyncEdgesCreated: null,
+      lastSyncErrorCount: null,
+    });
+    mockRun.mockResolvedValue({ records: [] });
+
+    const result = await runSync();
+
+    expect(result.nodesCreated).toBe(0);
+    expect(result.edgesCreated).toBe(0);
+    expect(result.errors.length).toBe(2);
+    expect(result.errors[0]).toContain('Failed to upsert nodes');
+    expect(result.errors[1]).toContain('Failed to upsert edges');
+
+    // Meta node should reflect pure 'error' status
+    const metaCall = mockRun.mock.calls.find(
+      (call: unknown[]) => (call[0] as string).includes('Meta'),
+    );
+    expect(metaCall).toBeDefined();
+    const params = metaCall![1] as Record<string, unknown>;
+    expect(params.status).toBe('error');
+    expect(params.errorCount).toBe(2);
+    expect(params.nodesCreated).toBe(0);
+    expect(params.edgesCreated).toBe(0);
+  });
+
   it('returns duration even when sync throws', async () => {
     // loadConfig works but verifyConnection fails
     const { verifyConnection } = await import('../../config/neo4j.js');

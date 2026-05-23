@@ -180,6 +180,7 @@ describe('computePersonalizedTrust', () => {
       expect.any(String),
       expect.any(String),
       2,
+      undefined,
     );
   });
 
@@ -426,5 +427,120 @@ describe('getDirectTrust', () => {
     await getDirectTrust('0xA', '0xB');
 
     expect(mockClose).toHaveBeenCalledOnce();
+  });
+
+  it('extracts stakeAmount from Neo4j Integer-like objects (toNumber)', async () => {
+    // Simulate the Neo4j driver returning Integer instances which expose toNumber()
+    const neo4jInt = { toNumber: () => 1e15 };
+    mockRun.mockResolvedValueOnce({
+      records: [{
+        get: (key: string) => {
+          if (key === 'stakeAmount') return neo4jInt;
+          if (key === 'predicate') return 'trusts';
+          if (key === 'timestamp') return Date.now();
+          return null;
+        },
+      }],
+    });
+
+    const result = await getDirectTrust('0xA', '0xB');
+
+    expect(result).not.toBeNull();
+    // Score derived from toNumber()-extracted stake should be positive
+    expect(result!.score).toBeGreaterThan(0);
+  });
+
+  it('extracts stakeAmount from numeric strings (parseFloat path)', async () => {
+    mockRun.mockResolvedValueOnce({
+      records: [{
+        get: (key: string) => {
+          if (key === 'stakeAmount') return '1500000000000000'; // 1.5e15 as string
+          if (key === 'predicate') return 'trusts';
+          if (key === 'timestamp') return Date.now();
+          return null;
+        },
+      }],
+    });
+
+    const result = await getDirectTrust('0xA', '0xB');
+
+    expect(result).not.toBeNull();
+    expect(result!.score).toBeGreaterThan(0);
+  });
+
+  it('falls back to 0 for non-numeric strings (NaN guard)', async () => {
+    mockRun.mockResolvedValueOnce({
+      records: [{
+        get: (key: string) => {
+          if (key === 'stakeAmount') return 'not-a-number';
+          if (key === 'predicate') return 'trusts';
+          if (key === 'timestamp') return Date.now();
+          return null;
+        },
+      }],
+    });
+
+    const result = await getDirectTrust('0xA', '0xB');
+
+    // parseFloat -> NaN -> 0; with zero stake the sigmoid yields 0
+    expect(result).not.toBeNull();
+    expect(result!.score).toBe(0);
+  });
+
+  it('falls back to 0 for unsupported stakeAmount types (boolean)', async () => {
+    // Booleans hit the final `return 0` branch of extractNumber
+    mockRun.mockResolvedValueOnce({
+      records: [{
+        get: (key: string) => {
+          if (key === 'stakeAmount') return true;
+          if (key === 'predicate') return 'trusts';
+          if (key === 'timestamp') return Date.now();
+          return null;
+        },
+      }],
+    });
+
+    const result = await getDirectTrust('0xA', '0xB');
+
+    expect(result).not.toBeNull();
+    expect(result!.score).toBe(0);
+  });
+
+  it('falls back to 0 for null stakeAmount', async () => {
+    // Null hits the first guard branch of extractNumber
+    mockRun.mockResolvedValueOnce({
+      records: [{
+        get: (key: string) => {
+          if (key === 'stakeAmount') return null;
+          if (key === 'predicate') return 'trusts';
+          if (key === 'timestamp') return Date.now();
+          return null;
+        },
+      }],
+    });
+
+    const result = await getDirectTrust('0xA', '0xB');
+
+    expect(result).not.toBeNull();
+    expect(result!.score).toBe(0);
+  });
+
+  it('falls back to 0 for undefined stakeAmount', async () => {
+    // Undefined hits the same first guard branch as null
+    mockRun.mockResolvedValueOnce({
+      records: [{
+        get: (key: string) => {
+          if (key === 'stakeAmount') return undefined;
+          if (key === 'predicate') return 'trusts';
+          if (key === 'timestamp') return Date.now();
+          return null;
+        },
+      }],
+    });
+
+    const result = await getDirectTrust('0xA', '0xB');
+
+    expect(result).not.toBeNull();
+    expect(result!.score).toBe(0);
   });
 });

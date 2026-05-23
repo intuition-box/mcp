@@ -114,6 +114,19 @@ describe('calculateStake', () => {
 
     expect(calculateStake(vault)).toBe(0);
   });
+
+  it('returns 0 for vault with missing total_assets (|| fallback)', () => {
+    // total_assets is empty string -- the `|| '0'` fallback on line 30 fires
+    // and BigInt('0') yields 0.
+    const vault = {
+      total_shares: '0',
+      total_assets: '',
+      position_count: '0',
+      market_cap: '0',
+    };
+
+    expect(calculateStake(vault)).toBe(0);
+  });
 });
 
 // ============ extractAddressNode ============
@@ -200,6 +213,73 @@ describe('transformTriple', () => {
     const { edge } = transformTriple(triple);
 
     expect(edge).toBeNull();
+  });
+
+  it('defaults timestamp to now() when created_at is missing', () => {
+    // created_at empty -- triggers the `|| new Date().toISOString()` fallback
+    // on line 73. We just assert the edge timestamp is a valid ISO string.
+    const before = new Date().toISOString();
+    const triple = makeTriple({ created_at: '' });
+    const { edge } = transformTriple(triple);
+    const after = new Date().toISOString();
+
+    expect(edge).not.toBeNull();
+    expect(typeof edge!.timestamp).toBe('string');
+    expect(edge!.timestamp >= before && edge!.timestamp <= after).toBe(true);
+  });
+
+  it('falls back to null when creator.label is missing (line 81 branch)', () => {
+    const triple = makeTriple({
+      creator: {
+        id: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        label: '',
+        type: 'user',
+      },
+    });
+    const { nodes } = transformTriple(triple);
+
+    // creatorNode label is set via extractAddressNode using the fallback.
+    // With null label, extractAddressNode falls back to the truncated id.
+    const creator = nodes.find(
+      n => n.id === '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    );
+    expect(creator).toBeDefined();
+    expect(creator!.label).toBe('0xaaaaaaaa...');
+  });
+
+  it('falls back to null when subject.label is missing (line 94 branch)', () => {
+    const triple = makeTriple({
+      subject: {
+        term_id: 'atom-subject',
+        label: '',
+        type: 'wallet',
+        wallet_id: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        creator_id: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      },
+    });
+    const { nodes } = transformTriple(triple);
+
+    const subject = nodes.find(
+      n => n.id === '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    );
+    expect(subject).toBeDefined();
+    expect(subject!.label).toBe('0xbbbbbbbb...');
+  });
+
+  it('defaults predicate to "attests" when predicate.label is missing (line 105)', () => {
+    const triple = makeTriple({
+      predicate: {
+        term_id: 'atom-predicate',
+        label: '',
+        type: 'predicate',
+        wallet_id: '0x0000000000000000000000000000000000000000',
+        creator_id: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      },
+    });
+    const { edge } = transformTriple(triple);
+
+    expect(edge).not.toBeNull();
+    expect(edge!.predicate).toBe('attests');
   });
 
   it('returns no nodes when creator is invalid', () => {
@@ -312,5 +392,89 @@ describe('transformTriples', () => {
 
     // Both should produce results (bad triple falls back to 0 stake)
     expect(result.edges.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('updates existing node last_updated when a later timestamp arrives', () => {
+    // Same creator, second triple has a strictly later timestamp
+    const triple1 = makeTriple({
+      term_id: 'triple-001',
+      created_at: '2026-01-01T00:00:00Z',
+    });
+    const triple2 = makeTriple({
+      term_id: 'triple-002',
+      created_at: '2026-06-15T12:00:00Z',
+      subject: {
+        term_id: 'atom-subject-2',
+        label: 'Other',
+        type: 'wallet',
+        wallet_id: '0xcccccccccccccccccccccccccccccccccccccccc',
+        creator_id: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      },
+    });
+
+    const result = transformTriples([triple1, triple2]);
+
+    const creator = result.nodes.get('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')!;
+
+    // last_updated should advance to the later timestamp
+    expect(creator.last_updated).toBe('2026-06-15T12:00:00Z');
+  });
+
+  it('keeps existing last_updated when an earlier timestamp arrives', () => {
+    // Same creator, second triple has an EARLIER timestamp than the first
+    const triple1 = makeTriple({
+      term_id: 'triple-001',
+      created_at: '2026-06-15T12:00:00Z',
+    });
+    const triple2 = makeTriple({
+      term_id: 'triple-002',
+      created_at: '2026-01-01T00:00:00Z',
+      subject: {
+        term_id: 'atom-subject-2',
+        label: 'Other',
+        type: 'wallet',
+        wallet_id: '0xcccccccccccccccccccccccccccccccccccccccc',
+        creator_id: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      },
+    });
+
+    const result = transformTriples([triple1, triple2]);
+
+    const creator = result.nodes.get('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')!;
+
+    // last_updated should NOT regress
+    expect(creator.last_updated).toBe('2026-06-15T12:00:00Z');
+  });
+
+  it('catches and logs errors when transformTriple itself throws', () => {
+    // Build a triple whose `creator` getter throws synchronously --
+    // transformTriple will attempt to read it and the for-loop catch
+    // in transformTriples must swallow the error and continue.
+    const throwingTriple = {
+      term_id: 'triple-throws',
+      subject_id: 'atom-subject',
+      predicate_id: 'atom-predicate',
+      object_id: 'atom-object',
+      creator_id: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      created_at: '2026-01-15T12:00:00Z',
+      subject: null,
+      predicate: null,
+      object: null,
+      triple_vault: null,
+    } as unknown as IntuitionTriple;
+    Object.defineProperty(throwingTriple, 'creator', {
+      get() {
+        throw new Error('boom from creator getter');
+      },
+      enumerable: true,
+    });
+
+    const goodTriple = makeTriple({ term_id: 'triple-good' });
+
+    // Should not throw -- bad triple is skipped, good triple still processed
+    const result = transformTriples([throwingTriple, goodTriple]);
+
+    expect(result.edges).toHaveLength(1);
+    expect(result.edges[0].triple_id).toBe('triple-good');
   });
 });

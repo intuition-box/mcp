@@ -576,4 +576,114 @@ describe('fetchGraphData', () => {
     await expect(fetchGraphData()).rejects.toThrow('Connection lost');
     expect(mockClose).toHaveBeenCalledOnce();
   });
+
+  it('parses string stakeAmount via parseFloat', async () => {
+    mockRun
+      .mockResolvedValueOnce({ records: [{ get: () => '0xA' }] })
+      .mockResolvedValueOnce({
+        records: [{
+          get: (k: string) => {
+            switch (k) {
+              case 'fromId': return '0xA';
+              case 'toId': return '0xA';
+              case 'stakeAmount': return '750.25';
+              case 'predicate': return 'trusts';
+              default: return null;
+            }
+          },
+        }],
+      });
+
+    const data = await fetchGraphData();
+
+    expect(data.edges[0].stakeAmount).toBeCloseTo(750.25, 10);
+  });
+
+  it('falls back to 0 for non-numeric string stakeAmount (NaN)', async () => {
+    mockRun
+      .mockResolvedValueOnce({ records: [{ get: () => '0xA' }] })
+      .mockResolvedValueOnce({
+        records: [{
+          get: (k: string) => {
+            switch (k) {
+              case 'fromId': return '0xA';
+              case 'toId': return '0xA';
+              case 'stakeAmount': return 'not-a-number';
+              case 'predicate': return 'trusts';
+              default: return null;
+            }
+          },
+        }],
+      });
+
+    const data = await fetchGraphData();
+
+    expect(data.edges[0].stakeAmount).toBe(0);
+  });
+
+  it('falls back to 0 for unsupported stakeAmount types (boolean)', async () => {
+    mockRun
+      .mockResolvedValueOnce({ records: [{ get: () => '0xA' }] })
+      .mockResolvedValueOnce({
+        records: [{
+          get: (k: string) => {
+            switch (k) {
+              case 'fromId': return '0xA';
+              case 'toId': return '0xA';
+              case 'stakeAmount': return true;
+              case 'predicate': return 'trusts';
+              default: return null;
+            }
+          },
+        }],
+      });
+
+    const data = await fetchGraphData();
+
+    expect(data.edges[0].stakeAmount).toBe(0);
+  });
+
+  it('falls back to 0 for null stakeAmount', async () => {
+    mockRun
+      .mockResolvedValueOnce({ records: [{ get: () => '0xA' }] })
+      .mockResolvedValueOnce({
+        records: [{
+          get: (k: string) => {
+            switch (k) {
+              case 'fromId': return '0xA';
+              case 'toId': return '0xA';
+              case 'stakeAmount': return null;
+              case 'predicate': return 'trusts';
+              default: return null;
+            }
+          },
+        }],
+      });
+
+    const data = await fetchGraphData();
+
+    expect(data.edges[0].stakeAmount).toBe(0);
+  });
+
+  it('falls back to 0 for undefined stakeAmount', async () => {
+    mockRun
+      .mockResolvedValueOnce({ records: [{ get: () => '0xA' }] })
+      .mockResolvedValueOnce({
+        records: [{
+          get: (k: string) => {
+            switch (k) {
+              case 'fromId': return '0xA';
+              case 'toId': return '0xA';
+              case 'stakeAmount': return undefined;
+              case 'predicate': return 'trusts';
+              default: return null;
+            }
+          },
+        }],
+      });
+
+    const data = await fetchGraphData();
+
+    expect(data.edges[0].stakeAmount).toBe(0);
+  });
 });

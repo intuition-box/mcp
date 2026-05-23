@@ -141,6 +141,24 @@ describe('batchComputeTrust', () => {
     expect(r.scores[1].compositeScore).toBe(100);
   });
 
+  it('with no anchors, treats missing baseline target as zero (?? fallback)', async () => {
+    // 0xt2 is absent from the baseline map -- `r?.compositeScore ?? 0`
+    // and `r?.confidence ?? 0` fallbacks should both fire.
+    mockBatch.mockResolvedValueOnce(new Map([
+      ['0xt1', fakeResult('0xt1', 50, 0.5)],
+    ]));
+
+    const r = await batchComputeTrust([], ['0xt1', '0xt2']);
+
+    expect(r.anchorCount).toBe(0);
+    expect(r.scores[1]).toEqual({
+      target: '0xt2',
+      compositeScore: 0,
+      confidence: 0,
+      anchorScores: [],
+    });
+  });
+
   it('reports computationTimeMs as a non-negative number', async () => {
     mockBatch.mockResolvedValueOnce(new Map([
       ['0xt1', fakeResult('0xt1', 10)],

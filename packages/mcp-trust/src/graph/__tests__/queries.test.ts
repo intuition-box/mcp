@@ -211,6 +211,76 @@ describe('getGraphStats', () => {
     await expect(getGraphStats()).rejects.toThrow('Connection lost');
     expect(mockClose).toHaveBeenCalledOnce();
   });
+
+  it('parses string Meta fields via Number() fallback', async () => {
+    // Count query
+    mockRun.mockResolvedValueOnce({
+      records: [{
+        get: (key: string) => {
+          if (key === 'addressCount') return { toNumber: () => 5 };
+          if (key === 'attestationCount') return { toNumber: () => 12 };
+          return null;
+        },
+      }],
+    });
+    mockRun.mockResolvedValueOnce({ records: [] });
+
+    // Meta values as strings -- exercise the Number(value) fallback path
+    // and the Number.isFinite truthy branch in toNullableNumber.
+    mockRun.mockResolvedValueOnce({
+      records: [{
+        get: (key: string) => {
+          switch (key) {
+            case 'lastSyncedAt': return '2026-04-01T00:00:00Z';
+            case 'lastSyncStatus': return 'success';
+            case 'lastSyncDurationMs': return '4200';
+            case 'lastSyncNodesCreated': return '15';
+            case 'lastSyncEdgesCreated': return '30';
+            default: return null;
+          }
+        },
+      }],
+    });
+
+    const stats = await getGraphStats();
+
+    expect(stats.lastSyncDurationMs).toBe(4200);
+    expect(stats.lastSyncNodesCreated).toBe(15);
+    expect(stats.lastSyncEdgesCreated).toBe(30);
+  });
+
+  it('returns null for non-numeric string Meta fields (isFinite guard)', async () => {
+    mockRun.mockResolvedValueOnce({
+      records: [{
+        get: (key: string) => {
+          if (key === 'addressCount') return { toNumber: () => 0 };
+          if (key === 'attestationCount') return { toNumber: () => 0 };
+          return null;
+        },
+      }],
+    });
+    mockRun.mockResolvedValueOnce({ records: [] });
+
+    // Garbage strings -- Number() returns NaN, isFinite check returns null.
+    mockRun.mockResolvedValueOnce({
+      records: [{
+        get: (key: string) => {
+          switch (key) {
+            case 'lastSyncDurationMs': return 'not-a-number';
+            case 'lastSyncNodesCreated': return 'garbage';
+            case 'lastSyncEdgesCreated': return 'bad';
+            default: return null;
+          }
+        },
+      }],
+    });
+
+    const stats = await getGraphStats();
+
+    expect(stats.lastSyncDurationMs).toBeNull();
+    expect(stats.lastSyncNodesCreated).toBeNull();
+    expect(stats.lastSyncEdgesCreated).toBeNull();
+  });
 });
 
 // ============ getAttestationsForAddress ============
@@ -572,6 +642,28 @@ describe('getNetworkGraph', () => {
     mockRun.mockResolvedValueOnce({ records: [nodeRecord('0xa', null), nodeRecord('0xb', null)] });
     mockRun.mockResolvedValueOnce({
       records: [edgeRecord('0xa', '0xb', 'trusts', null)],
+    });
+
+    const result = await getNetworkGraph('0xa', 1);
+    expect(result.edges[0].stake).toBe(0);
+  });
+
+  it('coerces string stake via Number() fallback', async () => {
+    // Stake delivered as a string -- exercises the `Number(value)` branch
+    // and the truthy `Number.isFinite` arm of neoNumberToNumber.
+    mockRun.mockResolvedValueOnce({ records: [nodeRecord('0xa', null), nodeRecord('0xb', null)] });
+    mockRun.mockResolvedValueOnce({
+      records: [edgeRecord('0xa', '0xb', 'trusts', '250' as unknown as number)],
+    });
+
+    const result = await getNetworkGraph('0xa', 1);
+    expect(result.edges[0].stake).toBe(250);
+  });
+
+  it('coerces non-numeric stake to 0 (isFinite false branch)', async () => {
+    mockRun.mockResolvedValueOnce({ records: [nodeRecord('0xa', null), nodeRecord('0xb', null)] });
+    mockRun.mockResolvedValueOnce({
+      records: [edgeRecord('0xa', '0xb', 'trusts', 'not-a-number' as unknown as number)],
     });
 
     const result = await getNetworkGraph('0xa', 1);

@@ -130,20 +130,26 @@ export async function runSync(options: {
     // guard) so the persisted value reflects the actual sync time on success.
     const metaSession = getSession();
     try {
-      const status = result.errors.length === 0 ? 'success' : 'error';
+      const status = result.errors.length === 0
+        ? 'success'
+        : result.nodesCreated > 0 || result.edgesCreated > 0
+          ? 'partial'
+          : 'error';
       await metaSession.run(
         `MERGE (m:Meta {key: 'sync'})
          SET m.lastSyncedAt = $now,
              m.lastSyncStatus = $status,
              m.lastSyncDurationMs = $durationMs,
              m.lastSyncNodesCreated = $nodesCreated,
-             m.lastSyncEdgesCreated = $edgesCreated`,
+             m.lastSyncEdgesCreated = $edgesCreated,
+             m.lastSyncErrorCount = $errorCount`,
         {
           now: new Date().toISOString(),
           status,
           durationMs: result.duration,
           nodesCreated: result.nodesCreated,
           edgesCreated: result.edgesCreated,
+          errorCount: result.errors.length,
         }
       );
     } finally {
@@ -181,6 +187,7 @@ export async function runSync(options: {
 
 // Run sync if executed directly. pathToFileURL handles Windows path semantics
 // (e.g. C:\foo\bar -> file:///C:/foo/bar) so the equality holds cross-platform.
+/* c8 ignore start -- CLI-only entry guard, not reachable when imported in tests */
 const isMainModule = import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMainModule) {
   runSync({ maxPages: 50 })
@@ -199,3 +206,4 @@ if (isMainModule) {
       await closeDriver();
     });
 }
+/* c8 ignore stop */

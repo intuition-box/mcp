@@ -173,6 +173,18 @@ describe('calculateResistance', () => {
     expect(result.maxChange).toBeCloseTo(0.1, 10);
     expect(result.avgChange).toBeCloseTo(0.075, 10);
   });
+
+  it('treats missing address in attacked map as score 0 (|| fallback)', () => {
+    // 0xB exists in baseline but is absent from attacked -- the `|| 0` fallback
+    // on the attacked.get(address) lookup should kick in.
+    const baseline = new Map([['0xA', 0.5], ['0xB', 0.4]]);
+    const attacked = new Map([['0xA', 0.5]]);
+
+    const result = calculateResistance(baseline, attacked);
+
+    // 0xB's attack score defaults to 0, so change for 0xB is 0.4
+    expect(result.maxChange).toBeCloseTo(0.4, 10);
+  });
 });
 
 // ============ simulateSybilAttack ============
@@ -404,6 +416,31 @@ describe('simulateSybilAttack', () => {
 
     expect(result.impact.targetBoostEigentrust).toBeCloseTo(0.15, 5);
     expect(result.impact.targetBoostAgentrank).toBeCloseTo(0.15, 5);
+  });
+
+  it('target boost falls back to 0 when target address is absent from score maps', async () => {
+    // Score maps do NOT contain the target address -- both baseline.get
+    // and attack.get return undefined, exercising the `|| 0` fallbacks
+    // on lines 529-534 for both EigenTrust and AgentRank.
+    const scores = { '0xA': 0.5, '0xB': 0.5 };
+
+    mockComputeEigenTrust.mockResolvedValueOnce(makeEigentrustResult(scores));
+    mockComputeAgentRank.mockResolvedValueOnce(makeAgentrankResult(scores));
+
+    mockNeo4jInjectionWithTarget(5, 10, 5);
+
+    mockComputeEigenTrust.mockResolvedValueOnce(makeEigentrustResult(scores));
+    mockComputeAgentRank.mockResolvedValueOnce(makeAgentrankResult(scores));
+
+    const result = await simulateSybilAttack({
+      numSybilNodes: 5,
+      numCollusionEdges: 10,
+      targetAddress: '0xUnknownTarget',
+    });
+
+    // 0 - 0 = 0 for both algorithms
+    expect(result.impact.targetBoostEigentrust).toBe(0);
+    expect(result.impact.targetBoostAgentrank).toBe(0);
   });
 
   it('guarantees cleanup even when attack computation fails', async () => {
