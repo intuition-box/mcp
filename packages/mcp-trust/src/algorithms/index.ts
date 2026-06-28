@@ -114,3 +114,14 @@ export type {
   BatchComputeTrustResult,
 } from './batch-trust.js';
 export { batchComputeTrust } from './batch-trust.js';
+
+// Trust score explanation
+export { explainTrustScore } from './explain.js';
+export type {
+  TrustExplanation,
+  TrustDriver,
+  TrustWeakener,
+  TopContributor,
+  ExplainedPath,
+  ImpactLevel,
+} from './explain.js';

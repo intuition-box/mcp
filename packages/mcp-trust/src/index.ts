@@ -46,6 +46,7 @@ import {
   computePersonalizedTrustNetwork,
   findTrustPaths,
   batchComputeTrust,
+  explainTrustScore,
   TrustScore,
 } from './algorithms/index.js';
 import { TRUST_PREDICATES, DEFAULT_WEIGHTS } from './config/predicates.js';
@@ -276,6 +277,27 @@ const TRUST_TOOLS = [
     description: 'Return detailed sync health: lastSyncedAt, lastSyncStatus, nodeCount, edgeCount, lastSyncDurationMs, top-10 predicate distribution, and a derived health field ("healthy" within 24h with no errors, "degraded" on errors, "stale" if older than 24h, "unknown" if never synced).',
     inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false },
   },
+  {
+    name: 'explain_trust_score',
+    description:
+      'Explain why an address has the trust score it does. Returns the composite score plus a human-readable verdict, a templated summary, the driver and weakener factors behind the number, the top contributing attesters, and the strongest trust path. Pass an optional fromAddress to resolve personalized paths and contributors.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        address: {
+          type: 'string',
+          description: 'The address to explain the trust score for',
+        },
+        fromAddress: {
+          type: 'string',
+          description:
+            'Optional source address. When provided, the explanation includes trust paths and per-contributor attribution from this perspective.',
+        },
+      },
+      required: ['address'],
+      additionalProperties: false,
+    },
+  },
 ] as const;
 
 // MCP tool call handler — routes to existing engine functions
@@ -336,6 +358,12 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
           }
         : undefined;
       const result = await computeCompositeScore(address, fromAddress, config);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    }
+    case 'explain_trust_score': {
+      const address = args.address as string;
+      const fromAddress = args.fromAddress as string | undefined;
+      const result = await explainTrustScore(address, fromAddress);
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     }
     case 'compute_personalized_trust': {
@@ -1485,6 +1513,23 @@ async function main(): Promise<void> {
         break;
       }
 
+      case 'explain': {
+        const explainAddr = process.argv[3];
+        if (!explainAddr) {
+          console.error('Usage: npm run dev explain <address> [--from <address>]');
+          return;
+        }
+        // Prefer the --from flag (like score), else fall back to a second
+        // bare positional argument, else undefined.
+        const fromIdx = process.argv.indexOf('--from');
+        const explainFrom = fromIdx !== -1 && process.argv[fromIdx + 1]
+          ? process.argv[fromIdx + 1]
+          : (process.argv[4] && !process.argv[4].startsWith('--') ? process.argv[4] : undefined);
+        const result = await explainTrustScore(explainAddr, explainFrom);
+        console.log(JSON.stringify(result, null, 2));
+        break;
+      }
+
       case 'trust':
         const fromAddr = process.argv[3];
         const toAddr = process.argv[4];
@@ -1547,6 +1592,7 @@ Trust Algorithms:
   npm run dev eigentrust                      - Compute global EigenTrust scores
   npm run dev agentrank [--top N]              - Compute global AgentRank (PageRank) scores
   npm run dev score <addr> [--from <addr>]    - Composite trust score (main API)
+  npm run dev explain <addr> [--from <addr>] - Explain a composite score (drivers, paths, summary)
   npm run dev trust <from> <to>               - Compute trust from one address to another
   npm run dev network <address> [maxHops]     - Compute trust network from an address
   npm run dev paths <from> <to> [maxHops]     - Find trust paths between addresses
@@ -1561,6 +1607,7 @@ Examples:
   npm run dev sync 5                          - Sync first 5 pages
   npm run dev query 0x1234...                 - Get attestations for address
   npm run dev score 0xabc... --from 0xdef...   - Composite score from a perspective
+  npm run dev explain 0xabc... --from 0xdef... - Explain why 0xabc scored what it did
   npm run dev trust 0xabc... 0xdef...         - How much should 0xabc trust 0xdef?
   npm run dev agentrank --top 50              - Show top 50 agents by PageRank
   npm run dev sybil --nodes 100 --target 0xabc - Sybil test with 100 nodes targeting 0xabc

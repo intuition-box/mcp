@@ -8,3 +8,5 @@ dist/
 .turbo
 .vercel
 .claude/ 
+.env*
+coverage/
